@@ -1,6 +1,6 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Preferences } from '@capacitor/preferences';
+import { PermissionsService } from '@/services/PermissionsService';
 
 interface SecurityContextType {
   autoLockTimeout: number;
@@ -17,6 +17,8 @@ interface SecurityContextType {
   setStealthMode: (enabled: boolean) => void;
   lastActivity: Date;
   updateActivity: () => void;
+  requestAllPermissions: () => Promise<boolean>;
+  permissionsGranted: boolean;
 }
 
 const SecurityContext = createContext<SecurityContextType | undefined>(undefined);
@@ -37,10 +39,35 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [selfDestructEnabled, setSelfDestructEnabledState] = useState(false);
   const [stealthMode, setStealthModeState] = useState(false);
   const [lastActivity, setLastActivity] = useState(new Date());
+  const [permissionsGranted, setPermissionsGranted] = useState(false);
+
+  const permissionsService = PermissionsService.getInstance();
 
   useEffect(() => {
     loadSecuritySettings();
+    checkPermissions();
   }, []);
+
+  const checkPermissions = async () => {
+    try {
+      const status = await permissionsService.checkAllPermissions();
+      const criticalPermissions = status.overlay && status.phone && status.camera;
+      setPermissionsGranted(criticalPermissions);
+    } catch (error) {
+      console.error('Error checking permissions:', error);
+    }
+  };
+
+  const requestAllPermissions = async (): Promise<boolean> => {
+    try {
+      const success = await permissionsService.requestAllPermissions();
+      await checkPermissions();
+      return success;
+    } catch (error) {
+      console.error('Error requesting permissions:', error);
+      return false;
+    }
+  };
 
   const loadSecuritySettings = async () => {
     try {
@@ -74,6 +101,11 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const setPreventScreenshots = async (prevent: boolean) => {
+    if (prevent) {
+      const hasPermission = await permissionsService.ensurePermissionForFeature('overlay');
+      if (!hasPermission) return;
+    }
+
     try {
       await Preferences.set({ key: 'vaultix_prevent_screenshots', value: prevent.toString() });
       setPreventScreenshotsState(prevent);
@@ -101,6 +133,11 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const setSelfDestructEnabled = async (enabled: boolean) => {
+    if (enabled) {
+      const hasPermission = await permissionsService.ensurePermissionForFeature('deviceAdmin');
+      if (!hasPermission) return;
+    }
+
     try {
       await Preferences.set({ key: 'vaultix_self_destruct_enabled', value: enabled.toString() });
       setSelfDestructEnabledState(enabled);
@@ -110,6 +147,11 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const setStealthMode = async (enabled: boolean) => {
+    if (enabled) {
+      const hasPermission = await permissionsService.ensurePermissionForFeature('overlay');
+      if (!hasPermission) return;
+    }
+
     try {
       await Preferences.set({ key: 'vaultix_stealth_mode', value: enabled.toString() });
       setStealthModeState(enabled);
@@ -138,6 +180,8 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setStealthMode,
       lastActivity,
       updateActivity,
+      requestAllPermissions,
+      permissionsGranted,
     }}>
       {children}
     </SecurityContext.Provider>

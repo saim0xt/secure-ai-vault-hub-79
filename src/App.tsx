@@ -1,4 +1,3 @@
-
 import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -67,8 +66,11 @@ const AppContent = () => {
         const { CrossDeviceSyncService } = await import('./services/CrossDeviceSyncService');
         const { AdvancedAnalyticsService } = await import('./services/AdvancedAnalyticsService');
         const { TestingSuiteService } = await import('./services/TestingSuiteService');
+        const { PermissionsService } = await import('./services/PermissionsService');
         
-        // Initialize all services
+        // Initialize all services (order matters for dependencies)
+        await PermissionsService.getInstance().initialize();
+        
         await Promise.all([
           AdMobService.getInstance().initialize(),
           PushNotificationService.getInstance().initialize(),
