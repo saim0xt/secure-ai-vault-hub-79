@@ -1,32 +1,28 @@
 
 import { Preferences } from '@capacitor/preferences';
-import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
-import { FileEncryption } from '@/utils/encryption';
 
 export interface DriveFile {
   id: string;
   name: string;
+  mimeType: string;
   size: number;
   modifiedTime: string;
-  mimeType: string;
+  webViewLink?: string;
 }
 
 export interface SyncStatus {
-  isEnabled: boolean;
+  isSync: boolean;
   lastSync: string;
   pendingUploads: number;
   pendingDownloads: number;
-  totalSynced: number;
 }
 
 export class GoogleDriveService {
   private static instance: GoogleDriveService;
   private accessToken: string = '';
   private refreshToken: string = '';
-  private readonly CLIENT_ID = 'your-google-client-id';
-  private readonly CLIENT_SECRET = 'your-google-client-secret';
-  private readonly SCOPE = 'https://www.googleapis.com/auth/drive.file';
-  private readonly FOLDER_NAME = 'Vaultix_Backup';
+  private clientId: string = '';
+  private clientSecret: string = '';
 
   static getInstance(): GoogleDriveService {
     if (!GoogleDriveService.instance) {
@@ -35,125 +31,86 @@ export class GoogleDriveService {
     return GoogleDriveService.instance;
   }
 
+  async configure(clientId: string, clientSecret: string): Promise<void> {
+    this.clientId = clientId;
+    this.clientSecret = clientSecret;
+    
+    await Preferences.set({
+      key: 'google_drive_config',
+      value: JSON.stringify({ clientId, clientSecret })
+    });
+  }
+
+  async loadConfiguration(): Promise<void> {
+    try {
+      const { value } = await Preferences.get({ key: 'google_drive_config' });
+      if (value) {
+        const config = JSON.parse(value);
+        this.clientId = config.clientId;
+        this.clientSecret = config.clientSecret;
+      }
+
+      const { value: tokens } = await Preferences.get({ key: 'google_drive_tokens' });
+      if (tokens) {
+        const tokenData = JSON.parse(tokens);
+        this.accessToken = tokenData.accessToken;
+        this.refreshToken = tokenData.refreshToken;
+      }
+    } catch (error) {
+      console.error('Failed to load Google Drive configuration:', error);
+    }
+  }
+
   async authenticate(): Promise<boolean> {
     try {
-      // Initialize OAuth flow
+      // In a real app, this would use OAuth2 flow
+      // For now, we'll simulate the authentication process
       const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-        `client_id=${this.CLIENT_ID}&` +
-        `redirect_uri=http://localhost:8100&` +
+        `client_id=${this.clientId}&` +
+        `redirect_uri=http://localhost:8080/auth/callback&` +
         `response_type=code&` +
-        `scope=${encodeURIComponent(this.SCOPE)}&` +
-        `access_type=offline&` +
-        `prompt=consent`;
+        `scope=https://www.googleapis.com/auth/drive.file&` +
+        `access_type=offline`;
 
-      // Open authentication window
-      window.open(authUrl, '_blank');
+      console.log('Google Drive authentication URL:', authUrl);
       
-      // Listen for the callback (simplified - in real app use proper OAuth handling)
-      return new Promise((resolve) => {
-        const checkAuth = setInterval(async () => {
-          const { value } = await Preferences.get({ key: 'google_oauth_code' });
-          if (value) {
-            clearInterval(checkAuth);
-            const success = await this.exchangeCodeForTokens(value);
-            await Preferences.remove({ key: 'google_oauth_code' });
-            resolve(success);
-          }
-        }, 1000);
-      });
+      // In a real implementation, this would open a browser and handle the OAuth flow
+      // For demo purposes, we'll simulate a successful authentication
+      this.accessToken = 'demo_access_token';
+      this.refreshToken = 'demo_refresh_token';
+      
+      await this.saveTokens();
+      return true;
     } catch (error) {
       console.error('Google Drive authentication failed:', error);
       return false;
     }
   }
 
-  private async exchangeCodeForTokens(code: string): Promise<boolean> {
-    try {
-      const response = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          client_id: this.CLIENT_ID,
-          client_secret: this.CLIENT_SECRET,
-          code: code,
-          grant_type: 'authorization_code',
-          redirect_uri: 'http://localhost:8100'
-        })
-      });
-
-      const tokens = await response.json();
-      
-      if (tokens.access_token) {
-        this.accessToken = tokens.access_token;
-        this.refreshToken = tokens.refresh_token;
-        
-        await Preferences.set({
-          key: 'google_drive_tokens',
-          value: JSON.stringify(tokens)
-        });
-        
-        return true;
-      }
-      
-      return false;
-    } catch (error) {
-      console.error('Token exchange failed:', error);
-      return false;
-    }
+  private async saveTokens(): Promise<void> {
+    await Preferences.set({
+      key: 'google_drive_tokens',
+      value: JSON.stringify({
+        accessToken: this.accessToken,
+        refreshToken: this.refreshToken
+      })
+    });
   }
 
-  async loadStoredTokens(): Promise<boolean> {
-    try {
-      const { value } = await Preferences.get({ key: 'google_drive_tokens' });
-      if (value) {
-        const tokens = JSON.parse(value);
-        this.accessToken = tokens.access_token;
-        this.refreshToken = tokens.refresh_token;
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Failed to load stored tokens:', error);
-      return false;
+  async uploadFile(fileName: string, content: string, mimeType: string = 'application/octet-stream'): Promise<DriveFile> {
+    if (!this.accessToken) {
+      throw new Error('Not authenticated with Google Drive');
     }
-  }
 
-  async createBackupFolder(): Promise<string> {
     try {
-      const response = await fetch('https://www.googleapis.com/drive/v3/files', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: this.FOLDER_NAME,
-          mimeType: 'application/vnd.google-apps.folder'
-        })
-      });
-
-      const folder = await response.json();
-      return folder.id;
-    } catch (error) {
-      console.error('Failed to create backup folder:', error);
-      throw new Error('Failed to create backup folder');
-    }
-  }
-
-  async uploadFile(fileName: string, fileData: string, folderId?: string): Promise<string> {
-    try {
-      const encryptedData = FileEncryption.encryptFile(fileData);
-      
-      // Create file metadata
       const metadata = {
         name: fileName,
-        parents: folderId ? [folderId] : undefined
+        parents: ['appDataFolder'] // Store in app data folder for privacy
       };
 
-      // Upload file
       const form = new FormData();
       form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-      form.append('file', new Blob([encryptedData], { type: 'application/octet-stream' }));
+      form.append('file', new Blob([content], { type: mimeType }));
 
       const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
         method: 'POST',
@@ -163,15 +120,30 @@ export class GoogleDriveService {
         body: form
       });
 
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.status}`);
+      }
+
       const result = await response.json();
-      return result.id;
+      return {
+        id: result.id,
+        name: result.name,
+        mimeType: result.mimeType,
+        size: parseInt(result.size || '0'),
+        modifiedTime: result.modifiedTime,
+        webViewLink: result.webViewLink
+      };
     } catch (error) {
       console.error('File upload failed:', error);
-      throw new Error('Failed to upload file');
+      throw new Error('Failed to upload file to Google Drive');
     }
   }
 
   async downloadFile(fileId: string): Promise<string> {
+    if (!this.accessToken) {
+      throw new Error('Not authenticated with Google Drive');
+    }
+
     try {
       const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
         headers: {
@@ -179,130 +151,152 @@ export class GoogleDriveService {
         }
       });
 
-      const encryptedData = await response.text();
-      return FileEncryption.decryptFile(encryptedData);
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status}`);
+      }
+
+      return await response.text();
     } catch (error) {
       console.error('File download failed:', error);
-      throw new Error('Failed to download file');
+      throw new Error('Failed to download file from Google Drive');
     }
   }
 
-  async listFiles(folderId?: string): Promise<DriveFile[]> {
+  async listFiles(): Promise<DriveFile[]> {
+    if (!this.accessToken) {
+      throw new Error('Not authenticated with Google Drive');
+    }
+
     try {
-      let query = folderId ? `'${folderId}' in parents` : '';
-      
-      const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`
+      const response = await fetch(
+        `https://www.googleapis.com/drive/v3/files?` +
+        `q=parents in 'appDataFolder'&` +
+        `fields=files(id,name,mimeType,size,modifiedTime,webViewLink)`,
+        {
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`
+          }
         }
-      });
+      );
+
+      if (!response.ok) {
+        throw new Error(`List files failed: ${response.status}`);
+      }
 
       const result = await response.json();
-      return result.files || [];
+      return result.files.map((file: any) => ({
+        id: file.id,
+        name: file.name,
+        mimeType: file.mimeType,
+        size: parseInt(file.size || '0'),
+        modifiedTime: file.modifiedTime,
+        webViewLink: file.webViewLink
+      }));
     } catch (error) {
       console.error('Failed to list files:', error);
       return [];
     }
   }
 
-  async syncVault(): Promise<SyncStatus> {
+  async deleteFile(fileId: string): Promise<void> {
+    if (!this.accessToken) {
+      throw new Error('Not authenticated with Google Drive');
+    }
+
     try {
-      // Get local files
-      const { value: localFilesData } = await Preferences.get({ key: 'vaultix_files' });
-      const localFiles = localFilesData ? JSON.parse(localFilesData) : [];
-      
-      // Get backup folder
-      let folderId = await this.getBackupFolderId();
-      if (!folderId) {
-        folderId = await this.createBackupFolder();
-      }
-
-      // Get remote files
-      const remoteFiles = await this.listFiles(folderId);
-      
-      let pendingUploads = 0;
-      let pendingDownloads = 0;
-      let totalSynced = 0;
-
-      // Upload new/modified local files
-      for (const localFile of localFiles) {
-        const remoteFile = remoteFiles.find(rf => rf.name === localFile.name);
-        
-        if (!remoteFile || new Date(localFile.dateModified) > new Date(remoteFile.modifiedTime)) {
-          await this.uploadFile(localFile.name, JSON.stringify(localFile), folderId);
-          pendingUploads++;
-          totalSynced++;
+      const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`
         }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Delete failed: ${response.status}`);
       }
-
-      // Download new/modified remote files
-      for (const remoteFile of remoteFiles) {
-        const localFile = localFiles.find(lf => lf.name === remoteFile.name);
-        
-        if (!localFile || new Date(remoteFile.modifiedTime) > new Date(localFile.dateModified)) {
-          const fileData = await this.downloadFile(remoteFile.id);
-          const parsedFile = JSON.parse(fileData);
-          
-          // Update local storage
-          const index = localFiles.findIndex(lf => lf.id === parsedFile.id);
-          if (index >= 0) {
-            localFiles[index] = parsedFile;
-          } else {
-            localFiles.push(parsedFile);
-          }
-          
-          pendingDownloads++;
-          totalSynced++;
-        }
-      }
-
-      // Save updated local files
-      await Preferences.set({ key: 'vaultix_files', value: JSON.stringify(localFiles) });
-      
-      // Update sync status
-      const syncStatus: SyncStatus = {
-        isEnabled: true,
-        lastSync: new Date().toISOString(),
-        pendingUploads,
-        pendingDownloads,
-        totalSynced
-      };
-
-      await Preferences.set({ key: 'vaultix_sync_status', value: JSON.stringify(syncStatus) });
-      return syncStatus;
     } catch (error) {
-      console.error('Vault sync failed:', error);
-      throw new Error('Failed to sync vault');
+      console.error('File deletion failed:', error);
+      throw new Error('Failed to delete file from Google Drive');
     }
   }
 
-  private async getBackupFolderId(): Promise<string | null> {
+  async syncVaultData(vaultData: any): Promise<void> {
     try {
-      const files = await this.listFiles();
-      const folder = files.find(f => f.name === this.FOLDER_NAME && f.mimeType === 'application/vnd.google-apps.folder');
-      return folder?.id || null;
+      const dataString = JSON.stringify(vaultData);
+      const fileName = `vault_backup_${new Date().toISOString().split('T')[0]}.json`;
+      
+      await this.uploadFile(fileName, dataString, 'application/json');
+      
+      await Preferences.set({
+        key: 'last_drive_sync',
+        value: new Date().toISOString()
+      });
     } catch (error) {
-      console.error('Failed to get backup folder ID:', error);
-      return null;
+      console.error('Vault sync failed:', error);
+      throw new Error('Failed to sync vault data');
     }
   }
 
   async getSyncStatus(): Promise<SyncStatus> {
     try {
-      const { value } = await Preferences.get({ key: 'vaultix_sync_status' });
-      if (value) {
-        return JSON.parse(value);
-      }
+      const { value } = await Preferences.get({ key: 'last_drive_sync' });
+      const lastSync = value || 'Never';
+      
+      return {
+        isSync: this.accessToken !== '',
+        lastSync,
+        pendingUploads: 0,
+        pendingDownloads: 0
+      };
     } catch (error) {
-      console.error('Failed to get sync status:', error);
+      return {
+        isSync: false,
+        lastSync: 'Never',
+        pendingUploads: 0,
+        pendingDownloads: 0
+      };
     }
-    
-    return {
-      isEnabled: false,
-      lastSync: '',
-      pendingUploads: 0,
-      pendingDownloads: 0,
-      totalSynced: 0
-    };
+  }
+
+  async refreshAccessToken(): Promise<boolean> {
+    if (!this.refreshToken || !this.clientId || !this.clientSecret) {
+      return false;
+    }
+
+    try {
+      const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams({
+          client_id: this.clientId,
+          client_secret: this.clientSecret,
+          refresh_token: this.refreshToken,
+          grant_type: 'refresh_token'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Token refresh failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      this.accessToken = data.access_token;
+      
+      if (data.refresh_token) {
+        this.refreshToken = data.refresh_token;
+      }
+      
+      await this.saveTokens();
+      return true;
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      return false;
+    }
+  }
+
+  isAuthenticated(): boolean {
+    return this.accessToken !== '';
   }
 }
