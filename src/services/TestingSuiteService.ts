@@ -1,4 +1,3 @@
-
 export interface TestResult {
   testName: string;
   passed: boolean;
@@ -178,9 +177,10 @@ export class TestingSuiteService {
         {
           name: 'Memory Usage',
           test: async () => {
-            // Check if performance API is available
-            if (typeof performance !== 'undefined' && performance.memory) {
-              return performance.memory.usedJSHeapSize < 50 * 1024 * 1024; // Under 50MB
+            // Check if performance API and memory are available
+            const perf = performance as any;
+            if (typeof performance !== 'undefined' && perf.memory && perf.memory.usedJSHeapSize) {
+              return perf.memory.usedJSHeapSize < 50 * 1024 * 1024; // Under 50MB
             }
             return true; // Skip if not available
           }

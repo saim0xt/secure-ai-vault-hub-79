@@ -220,7 +220,7 @@ export class AdvancedAnalyticsService {
       recommendations.push({
         id: 'security_break_ins',
         type: 'security',
-        priority: 'critical',
+        priority: 'high',
         title: 'Break-in Attempts Detected',
         description: `${breakIns.length} unauthorized access attempts detected`,
         actionItems: [
