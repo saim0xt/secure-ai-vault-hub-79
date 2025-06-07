@@ -1,3 +1,4 @@
+
 import { PushNotifications, PushNotificationSchema, ActionPerformed, PushNotificationToken, PermissionStatus } from '@capacitor/push-notifications';
 import { Preferences } from '@capacitor/preferences';
 
@@ -192,4 +193,65 @@ export class PushNotificationService {
   }
 
   private getRandomDailyTime(): string {
-    const hours = Math.floor(
+    const hours = Math.floor(Math.random() * 24);
+    const minutes = Math.floor(Math.random() * 60);
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  }
+
+  private async saveSchedules(schedules: NotificationSchedule[]): Promise<void> {
+    try {
+      await Preferences.set({ 
+        key: 'vaultix_notification_schedules', 
+        value: JSON.stringify(schedules) 
+      });
+    } catch (error) {
+      console.error('Failed to save notification schedules:', error);
+    }
+  }
+
+  async sendSecurityAlert(title: string, body: string): Promise<void> {
+    try {
+      // This would typically send a push notification via a backend service
+      // For now, we'll store it as a local notification
+      const notification = {
+        id: Date.now().toString(),
+        title,
+        body,
+        data: { type: 'security_alert' },
+        receivedAt: new Date().toISOString(),
+        read: false
+      };
+      
+      await this.storeNotification(notification as any);
+      console.log('Security alert sent:', title);
+    } catch (error) {
+      console.error('Failed to send security alert:', error);
+    }
+  }
+
+  async getStoredNotifications(): Promise<any[]> {
+    try {
+      const stored = await Preferences.get({ key: 'vaultix_notifications' });
+      return stored.value ? JSON.parse(stored.value) : [];
+    } catch (error) {
+      console.error('Failed to get stored notifications:', error);
+      return [];
+    }
+  }
+
+  async markNotificationAsRead(id: string): Promise<void> {
+    try {
+      const notifications = await this.getStoredNotifications();
+      const updated = notifications.map(notif => 
+        notif.id === id ? { ...notif, read: true } : notif
+      );
+      
+      await Preferences.set({ 
+        key: 'vaultix_notifications', 
+        value: JSON.stringify(updated) 
+      });
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error);
+    }
+  }
+}
