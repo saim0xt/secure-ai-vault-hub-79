@@ -1,3 +1,4 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -29,7 +30,7 @@ const queryClient = new QueryClient();
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <>{children}</> : <Navigate to="/auth" />;
+  return isAuthenticated ? <>{children}</> : <Navigate to="/auth" replace />;
 };
 
 const AppContent = () => {
@@ -43,11 +44,12 @@ const AppContent = () => {
         await StatusBar.setBackgroundColor({ color: '#000000' });
         
         // Configure keyboard
-        Keyboard.setAccessoryBarVisible({ isVisible: false });
+        await Keyboard.setAccessoryBarVisible({ isVisible: false });
         
-        setIsLoading(false);
+        console.log('Platform initialization successful');
       } catch (error) {
         console.log('Platform initialization failed (running in web):', error);
+      } finally {
         setIsLoading(false);
       }
     };
@@ -112,7 +114,7 @@ const AppContent = () => {
             <VoiceRecorder />
           </ProtectedRoute>
         } />
-        <Route path="*" element={<Navigate to="/auth" />} />
+        <Route path="*" element={<Navigate to="/auth" replace />} />
       </Routes>
     </BrowserRouter>
   );

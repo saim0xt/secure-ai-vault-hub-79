@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSecurity } from '@/contexts/SecurityContext';
 import { Card } from '@/components/ui/card';
@@ -10,7 +11,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Fingerprint, Eye, EyeOff, Shield, Lock } from 'lucide-react';
 
 const AuthScreen = () => {
-  const { hasPin, login, setupPin, attempts, fakeVaultMode } = useAuth();
+  const navigate = useNavigate();
+  const { hasPin, login, setupPin, attempts, fakeVaultMode, isAuthenticated } = useAuth();
   const { maxFailedAttempts, stealthMode } = useSecurity();
   const { toast } = useToast();
   
@@ -19,6 +21,14 @@ const AuthScreen = () => {
   const [showPin, setShowPin] = useState(false);
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      console.log('User already authenticated, redirecting to dashboard');
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   useEffect(() => {
     // Auto-focus PIN input
@@ -41,7 +51,7 @@ const AuthScreen = () => {
     setLoading(true);
 
     try {
-      if (!hasPin) {
+      if (!hasPin || isSettingUp) {
         if (pin !== confirmPin) {
           toast({
             title: "Error",
@@ -65,9 +75,25 @@ const AuthScreen = () => {
           title: "Success",
           description: "PIN setup complete. Welcome to Vaultix!",
         });
+        
+        // Navigate after successful setup
+        setTimeout(() => {
+          navigate('/', { replace: true });
+        }, 500);
       } else {
         const success = await login(pin);
-        if (!success) {
+        if (success) {
+          console.log('Login successful, navigating to dashboard');
+          toast({
+            title: "Welcome",
+            description: "Successfully logged in!",
+          });
+          
+          // Navigate after successful login
+          setTimeout(() => {
+            navigate('/', { replace: true });
+          }, 500);
+        } else {
           toast({
             title: "Access Denied",
             description: `Incorrect PIN. ${maxFailedAttempts - attempts} attempts remaining.`,
@@ -76,6 +102,7 @@ const AuthScreen = () => {
         }
       }
     } catch (error) {
+      console.error('Auth error:', error);
       toast({
         title: "Error",
         description: "Authentication failed. Please try again.",
@@ -142,6 +169,7 @@ const AuthScreen = () => {
                     placeholder={!hasPin || isSettingUp ? "Create PIN (4+ digits)" : "Enter PIN"}
                     className="bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 pr-10"
                     maxLength={10}
+                    autoComplete="off"
                   />
                   <button
                     type="button"
@@ -161,6 +189,7 @@ const AuthScreen = () => {
                       placeholder="Confirm PIN"
                       className="bg-gray-700/50 border-gray-600 text-white placeholder-gray-400"
                       maxLength={10}
+                      autoComplete="off"
                     />
                   </div>
                 )}

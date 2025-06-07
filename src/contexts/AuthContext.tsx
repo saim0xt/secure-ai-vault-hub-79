@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Preferences } from '@capacitor/preferences';
 import CryptoJS from 'crypto-js';
@@ -36,17 +37,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [fakeVaultMode, setFakeVaultMode] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const [isLocked, setIsLocked] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    checkExistingPin();
-    checkBiometricSettings();
-    checkLockStatus();
+    const initializeAuth = async () => {
+      try {
+        await Promise.all([
+          checkExistingPin(),
+          checkBiometricSettings(),
+          checkLockStatus()
+        ]);
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+      } finally {
+        setIsInitialized(true);
+      }
+    };
+
+    initializeAuth();
   }, []);
 
   const checkExistingPin = async () => {
     try {
       const { value } = await Preferences.get({ key: 'vaultix_pin_hash' });
       setHasPin(!!value);
+      console.log('PIN check complete:', !!value);
     } catch (error) {
       console.error('Error checking PIN:', error);
     }
@@ -81,6 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setHasPin(true);
       setIsAuthenticated(true);
       setAttempts(0);
+      console.log('PIN setup successful');
     } catch (error) {
       console.error('Error setting up PIN:', error);
       throw error;
@@ -89,21 +105,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (pin: string): Promise<boolean> => {
     try {
+      console.log('Login attempt started');
       const { value: storedHash } = await Preferences.get({ key: 'vaultix_pin_hash' });
+      
+      if (!storedHash) {
+        console.error('No stored PIN hash found');
+        return false;
+      }
+
       const inputHash = hashPin(pin);
       
       if (storedHash === inputHash) {
+        console.log('PIN verification successful');
         setIsAuthenticated(true);
         setAttempts(0);
         setIsLocked(false);
         await Preferences.remove({ key: 'vaultix_lock_status' });
         return true;
       } else {
+        console.log('PIN verification failed');
         const newAttempts = attempts + 1;
         setAttempts(newAttempts);
         
         // Log break-in attempt with photo and location
-        await IntruderDetection.logBreakInAttempt('failed_pin');
+        try {
+          await IntruderDetection.logBreakInAttempt('failed_pin');
+        } catch (detectionError) {
+          console.error('Intruder detection failed:', detectionError);
+        }
         
         // Lock vault after 5 failed attempts
         if (newAttempts >= 5) {
@@ -120,6 +149,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    console.log('Logout initiated');
     setIsAuthenticated(false);
     setFakeVaultMode(false);
   };
@@ -159,6 +189,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLocked(false);
     await Preferences.remove({ key: 'vaultix_lock_status' });
   };
+
+  // Don't render children until auth is initialized
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-white text-xl">Initializing...</div>
+      </div>
+    );
+  }
 
   return (
     <AuthContext.Provider value={{
