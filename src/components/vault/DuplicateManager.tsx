@@ -22,8 +22,7 @@ interface VaultFile {
   name: string;
   size: number;
   type: string;
-  path: string;
-  lastModified: Date;
+  dateModified: Date;
   hash: string;
 }
 
@@ -71,8 +70,7 @@ const DuplicateManager = () => {
           name: file.name,
           size: file.size,
           type: file.type,
-          path: file.path || '',
-          lastModified: new Date(file.lastModified || Date.now()),
+          dateModified: new Date(file.dateModified || Date.now()),
           hash
         });
       }
@@ -89,7 +87,7 @@ const DuplicateManager = () => {
           duplicates.push({
             id: hash,
             hash,
-            files: groupFiles.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime()),
+            files: groupFiles.sort((a, b) => b.dateModified.getTime() - a.dateModified.getTime()),
             totalSize,
             potentialSavings
           });
@@ -146,7 +144,7 @@ const DuplicateManager = () => {
   const selectAllInGroup = (group: DuplicateGroup, keepNewest: boolean = true) => {
     const newSelected = new Set(selectedFiles);
     const sortedFiles = [...group.files].sort((a, b) => 
-      b.lastModified.getTime() - a.lastModified.getTime()
+      b.dateModified.getTime() - a.dateModified.getTime()
     );
     
     if (keepNewest) {
@@ -325,7 +323,7 @@ const DuplicateManager = () => {
                             )}
                           </div>
                           <div className="text-sm text-muted-foreground">
-                            {formatFileSize(file.size)} • {file.lastModified.toLocaleDateString()}
+                            {formatFileSize(file.size)} • {file.dateModified.toLocaleDateString()}
                           </div>
                         </div>
                       </div>

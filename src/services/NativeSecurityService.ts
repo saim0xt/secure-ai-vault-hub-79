@@ -1,5 +1,5 @@
 
-import { CapacitorConfig, registerPlugin } from '@capacitor/core';
+import { registerPlugin } from '@capacitor/core';
 
 export interface NativeSecurityPlugin {
   enableScreenshotPrevention(): Promise<{ success: boolean }>;
