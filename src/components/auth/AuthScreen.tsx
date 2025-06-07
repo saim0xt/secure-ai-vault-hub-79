@@ -8,7 +8,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { Fingerprint, Eye, EyeOff, Shield, Lock } from 'lucide-react';
+import { Fingerprint, Eye, EyeOff, Shield, Lock, Grid3X3 } from 'lucide-react';
+import PatternLock from './PatternLock';
 
 const AuthScreen = () => {
   const navigate = useNavigate();
@@ -21,6 +22,8 @@ const AuthScreen = () => {
   const [showPin, setShowPin] = useState(false);
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [authMethod, setAuthMethod] = useState<'pin' | 'pattern'>('pin');
+  const [showPatternLock, setShowPatternLock] = useState(false);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -32,12 +35,19 @@ const AuthScreen = () => {
 
   useEffect(() => {
     // Auto-focus PIN input
-    const input = document.getElementById('pin-input');
-    if (input) input.focus();
-  }, []);
+    if (authMethod === 'pin') {
+      const input = document.getElementById('pin-input');
+      if (input) input.focus();
+    }
+  }, [authMethod]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (authMethod === 'pattern') {
+      setShowPatternLock(true);
+      return;
+    }
     
     if (!pin) {
       toast({
@@ -76,7 +86,6 @@ const AuthScreen = () => {
           description: "PIN setup complete. Welcome to Vaultix!",
         });
         
-        // Navigate after successful setup
         setTimeout(() => {
           navigate('/', { replace: true });
         }, 500);
@@ -89,7 +98,6 @@ const AuthScreen = () => {
             description: "Successfully logged in!",
           });
           
-          // Navigate after successful login
           setTimeout(() => {
             navigate('/', { replace: true });
           }, 500);
@@ -115,11 +123,70 @@ const AuthScreen = () => {
     }
   };
 
+  const handlePatternComplete = async (pattern: number[]) => {
+    try {
+      // Convert pattern to string for authentication
+      const patternString = pattern.join('');
+      
+      if (!hasPin || isSettingUp) {
+        // Setup new pattern
+        await setupPin(patternString);
+        toast({
+          title: "Success",
+          description: "Pattern setup complete. Welcome to Vaultix!",
+        });
+        
+        setTimeout(() => {
+          navigate('/', { replace: true });
+        }, 500);
+      } else {
+        // Authenticate with pattern
+        const success = await login(patternString);
+        if (success) {
+          toast({
+            title: "Welcome",
+            description: "Successfully logged in!",
+          });
+          
+          setTimeout(() => {
+            navigate('/', { replace: true });
+          }, 500);
+        } else {
+          toast({
+            title: "Access Denied",
+            description: `Incorrect pattern. ${maxFailedAttempts - attempts} attempts remaining.`,
+            variant: "destructive",
+          });
+          setShowPatternLock(false);
+        }
+      }
+    } catch (error) {
+      console.error('Pattern auth error:', error);
+      toast({
+        title: "Error",
+        description: "Pattern authentication failed. Please try again.",
+        variant: "destructive",
+      });
+      setShowPatternLock(false);
+    }
+  };
+
   const switchToSetup = () => {
     setIsSettingUp(true);
     setPin('');
     setConfirmPin('');
   };
+
+  if (showPatternLock) {
+    return (
+      <PatternLock
+        onPatternComplete={handlePatternComplete}
+        onCancel={() => setShowPatternLock(false)}
+        isSetup={!hasPin || isSettingUp}
+        title={!hasPin || isSettingUp ? "Create Pattern" : "Enter Pattern"}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 flex items-center justify-center p-4">
@@ -147,7 +214,7 @@ const AuthScreen = () => {
               <p className="text-gray-400">
                 {!hasPin || isSettingUp
                   ? "Setup your secure vault"
-                  : "Enter your PIN to access vault"
+                  : "Enter your credentials to access vault"
                 }
               </p>
               {fakeVaultMode && (
@@ -157,76 +224,117 @@ const AuthScreen = () => {
               )}
             </div>
 
-            {/* PIN Form */}
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-4">
-                <div className="relative">
-                  <Input
-                    id="pin-input"
-                    type={showPin ? "text" : "password"}
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value)}
-                    placeholder={!hasPin || isSettingUp ? "Create PIN (4+ digits)" : "Enter PIN"}
-                    className="bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 pr-10"
-                    maxLength={10}
-                    autoComplete="off"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPin(!showPin)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
-                  >
-                    {showPin ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
+            {/* Authentication Method Tabs */}
+            <div className="flex mb-6 bg-gray-700/50 rounded-lg p-1">
+              <button
+                onClick={() => setAuthMethod('pin')}
+                className={`flex-1 flex items-center justify-center space-x-2 py-2 px-4 rounded-md transition-colors ${
+                  authMethod === 'pin' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Lock className="w-4 h-4" />
+                <span>PIN</span>
+              </button>
+              <button
+                onClick={() => setAuthMethod('pattern')}
+                className={`flex-1 flex items-center justify-center space-x-2 py-2 px-4 rounded-md transition-colors ${
+                  authMethod === 'pattern' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Grid3X3 className="w-4 h-4" />
+                <span>Pattern</span>
+              </button>
+            </div>
 
-                {(!hasPin || isSettingUp) && (
+            {/* PIN Form */}
+            {authMethod === 'pin' && (
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="space-y-4">
                   <div className="relative">
                     <Input
+                      id="pin-input"
                       type={showPin ? "text" : "password"}
-                      value={confirmPin}
-                      onChange={(e) => setConfirmPin(e.target.value)}
-                      placeholder="Confirm PIN"
-                      className="bg-gray-700/50 border-gray-600 text-white placeholder-gray-400"
+                      value={pin}
+                      onChange={(e) => setPin(e.target.value)}
+                      placeholder={!hasPin || isSettingUp ? "Create PIN (4+ digits)" : "Enter PIN"}
+                      className="bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 pr-10"
                       maxLength={10}
                       autoComplete="off"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPin(!showPin)}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+                    >
+                      {showPin ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
                   </div>
-                )}
-              </div>
 
-              {/* Failed Attempts Warning */}
-              {attempts > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="bg-red-500/20 border border-red-500/30 rounded-lg p-3"
+                  {(!hasPin || isSettingUp) && (
+                    <div className="relative">
+                      <Input
+                        type={showPin ? "text" : "password"}
+                        value={confirmPin}
+                        onChange={(e) => setConfirmPin(e.target.value)}
+                        placeholder="Confirm PIN"
+                        className="bg-gray-700/50 border-gray-600 text-white placeholder-gray-400"
+                        maxLength={10}
+                        autoComplete="off"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3"
                 >
-                  <p className="text-red-400 text-sm">
-                    ⚠️ {attempts} failed attempt{attempts > 1 ? 's' : ''}. 
-                    {maxFailedAttempts - attempts} remaining.
-                  </p>
-                </motion.div>
-              )}
+                  {loading ? (
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Authenticating...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <Lock className="w-4 h-4 mr-2" />
+                      {!hasPin || isSettingUp ? "Setup Vault" : "Unlock Vault"}
+                    </>
+                  )}
+                </Button>
+              </form>
+            )}
 
-              <Button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3"
+            {/* Pattern Form */}
+            {authMethod === 'pattern' && (
+              <div className="space-y-6">
+                <Button
+                  onClick={() => setShowPatternLock(true)}
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3"
+                >
+                  <Grid3X3 className="w-4 h-4 mr-2" />
+                  {!hasPin || isSettingUp ? "Create Pattern" : "Draw Pattern"}
+                </Button>
+              </div>
+            )}
+
+            {/* Failed Attempts Warning */}
+            {attempts > 0 && (
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="bg-red-500/20 border border-red-500/30 rounded-lg p-3 mt-4"
               >
-                {loading ? (
-                  <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Authenticating...</span>
-                  </div>
-                ) : (
-                  <>
-                    <Lock className="w-4 h-4 mr-2" />
-                    {!hasPin || isSettingUp ? "Setup Vault" : "Unlock Vault"}
-                  </>
-                )}
-              </Button>
-            </form>
+                <p className="text-red-400 text-sm">
+                  ⚠️ {attempts} failed attempt{attempts > 1 ? 's' : ''}. 
+                  {maxFailedAttempts - attempts} remaining.
+                </p>
+              </motion.div>
+            )}
 
             {/* Biometric Option */}
             {hasPin && !isSettingUp && (

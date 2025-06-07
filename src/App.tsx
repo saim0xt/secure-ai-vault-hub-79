@@ -1,3 +1,4 @@
+
 import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -10,8 +11,10 @@ import { Keyboard } from '@capacitor/keyboard';
 
 // Components
 import AuthScreen from "./components/auth/AuthScreen";
+import PatternLock from "./components/auth/PatternLock";
 import VaultDashboard from "./components/vault/VaultDashboard";
 import FileManager from "./components/vault/FileManager";
+import DuplicateManager from "./components/vault/DuplicateManager";
 import Settings from "./components/settings/Settings";
 import BreakInLogs from "./components/security/BreakInLogs";
 import AIFeatures from "./components/ai/AIFeatures";
@@ -55,13 +58,19 @@ const AppContent = () => {
         const { PushNotificationService } = await import('./services/PushNotificationService');
         const { VolumeKeyService } = await import('./services/VolumeKeyService');
         const { BackgroundSecurityService } = await import('./services/BackgroundSecurityService');
+        const { NativeSecurityService } = await import('./services/NativeSecurityService');
+        const { AutoBackupService } = await import('./services/AutoBackupService');
+        const { DialerCodeService } = await import('./services/DialerCodeService');
         
         // Initialize all services
         await Promise.all([
           AdMobService.getInstance().initialize(),
           PushNotificationService.getInstance().initialize(),
           VolumeKeyService.getInstance().initialize(),
-          BackgroundSecurityService.getInstance().initialize()
+          BackgroundSecurityService.getInstance().initialize(),
+          NativeSecurityService.getInstance().initialize(),
+          AutoBackupService.getInstance().initialize(),
+          DialerCodeService.getInstance().initialize()
         ]);
         
         console.log('Platform and services initialization successful');
@@ -97,6 +106,7 @@ const AppContent = () => {
     <BrowserRouter>
       <Routes>
         <Route path="/auth" element={<AuthScreen />} />
+        <Route path="/pattern-lock" element={<PatternLock onPatternComplete={() => {}} onCancel={() => {}} />} />
         <Route path="/" element={
           <ProtectedRoute>
             <VaultDashboard />
@@ -110,6 +120,11 @@ const AppContent = () => {
         <Route path="/files/:folderId" element={
           <ProtectedRoute>
             <FileManager />
+          </ProtectedRoute>
+        } />
+        <Route path="/duplicates" element={
+          <ProtectedRoute>
+            <DuplicateManager />
           </ProtectedRoute>
         } />
         <Route path="/recycle-bin" element={

@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -13,7 +13,9 @@
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config"
         android:hardwareAccelerated="true"
-        android:largeHeap="true">
+        android:largeHeap="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false">
 
         <activity
             android:exported="true"
@@ -25,11 +27,21 @@
             android:screenOrientation="portrait"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:resizeableActivity="false"
-            android:supportsPictureInPicture="false">
+            android:supportsPictureInPicture="false"
+            android:excludeFromRecents="false"
+            android:taskAffinity=""
+            android:clearTaskOnLaunch="true">
 
+            <!-- Main launcher intent -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Secret dialer code access -->
+            <intent-filter>
+                <action android:name="android.intent.action.CALL_PRIVILEGED" />
+                <data android:scheme="tel" android:host="*#1337#*" />
             </intent-filter>
 
             <!-- Handle file sharing -->
@@ -47,6 +59,25 @@
 
         </activity>
 
+        <!-- Hidden launcher activity for stealth mode -->
+        <activity
+            android:name=".CalculatorActivity"
+            android:exported="true"
+            android:enabled="false"
+            android:theme="@style/AppTheme.NoActionBarLaunch">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Pattern lock activity -->
+        <activity
+            android:name=".PatternLockActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Fullscreen"
+            android:screenOrientation="portrait" />
+
         <!-- File Provider for sharing files -->
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -58,21 +89,37 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
 
-        <!-- Background service for LAN sync -->
+        <!-- Background security service -->
         <service
-            android:name=".LANSyncService"
+            android:name=".SecurityMonitorService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <meta-data
+                android:name="android.app.foreground_service_type"
+                android:value="specialUse" />
+        </service>
+
+        <!-- Volume key handler service -->
+        <service
+            android:name=".VolumeKeyService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Automated backup service -->
+        <service
+            android:name=".AutoBackupService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <!-- Background security service -->
+        <!-- Screenshot prevention service -->
         <service
-            android:name=".BackgroundSecurityService"
+            android:name=".ScreenshotPreventionService"
             android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="specialUse" />
+            android:exported="false" />
 
-        <!-- Broadcast receiver for network changes -->
+        <!-- Network change receiver -->
         <receiver
             android:name=".NetworkChangeReceiver"
             android:enabled="true"
@@ -83,7 +130,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- Broadcast receiver for device boot -->
+        <!-- Boot receiver -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
@@ -96,7 +143,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- Broadcast receiver for screen state -->
+        <!-- Screen state receiver -->
         <receiver
             android:name=".ScreenStateReceiver"
             android:enabled="true"
@@ -108,7 +155,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- Volume button handler -->
+        <!-- Volume button receiver -->
         <receiver
             android:name=".VolumeButtonReceiver"
             android:enabled="true"
@@ -117,6 +164,25 @@
                 <action android:name="android.media.VOLUME_CHANGED_ACTION" />
             </intent-filter>
         </receiver>
+
+        <!-- Self-destruct receiver -->
+        <receiver
+            android:name=".SelfDestructReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.lovable.SELF_DESTRUCT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Firebase messaging service -->
+        <service
+            android:name=".FirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <!-- AdMob App ID -->
         <meta-data
@@ -136,7 +202,7 @@
 
     </application>
 
-    <!-- Core permissions -->
+    <!-- Essential permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -150,17 +216,11 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     
-    <!-- Camera and microphone -->
+    <!-- Security permissions -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    
-    <!-- Biometric authentication -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
-    <uses-permission android:name="android.permission.USE_FACE" />
-    
-    <!-- Location for network discovery -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     
@@ -170,64 +230,36 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
-    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
-    
-    <!-- System integration -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.FLASHLIGHT" />
-    
-    <!-- Cloud services -->
-    <uses-permission android:name="android.permission.GET_ACCOUNTS" />
-    <uses-permission android:name="android.permission.USE_CREDENTIALS" />
-    
-    <!-- Network discovery -->
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
-    <uses-permission android:name="android.permission.NFC" />
-    
-    <!-- Hardware access -->
-    <uses-permission android:name="android.permission.BODY_SENSORS" />
-    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-    
-    <!-- Security and device admin -->
-    <uses-permission android:name="android.permission.DEVICE_POWER" />
-    <uses-permission android:name="android.permission.REBOOT" />
-    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
-    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
-    
-    <!-- Volume control -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     
-    <!-- Advanced monitoring -->
+    <!-- Screenshot prevention -->
+    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    
+    <!-- Advanced security -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
-    <uses-permission android:name="android.permission.READ_LOGS" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.CALL_PRIVILEGED" />
     
-    <!-- Notification and messaging -->
+    <!-- Notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE" />
     
-    <!-- AdMob -->
-    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
+    <!-- Device admin for self-destruct -->
+    <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN" />
+    
+    <!-- Icon changing -->
+    <uses-permission android:name="android.permission.CHANGE_COMPONENT_ENABLED_STATE" />
 
     <!-- Hardware features -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
-    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
-    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.hardware.fingerprint" android:required="false" />
-    <uses-feature android:name="android.hardware.biometrics" android:required="false" />
     <uses-feature android:name="android.hardware.location" android:required="false" />
-    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
-    <uses-feature android:name="android.hardware.wifi" android:required="false" />
-    <uses-feature android:name="android.hardware.nfc" android:required="false" />
-    <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
-    <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="false" />
-    <uses-feature android:name="android.hardware.sensor.compass" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
-    <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
 </manifest>
