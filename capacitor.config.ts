@@ -13,7 +13,14 @@ const config: CapacitorConfig = {
     backgroundColor: '#000000',
     allowMixedContent: true,
     captureInput: true,
-    webContentsDebuggingEnabled: true
+    webContentsDebuggingEnabled: true,
+    appendUserAgent: 'Vaultix/1.0',
+    overrideUserAgent: 'Vaultix Android App',
+    flavor: 'main',
+    buildOptions: {
+      keystorePath: undefined,
+      keystoreAlias: undefined,
+    }
   },
   plugins: {
     Keyboard: {
@@ -25,6 +32,12 @@ const config: CapacitorConfig = {
       style: 'dark',
       backgroundColor: '#000000',
     },
+    BiometricAuth: {
+      allowDeviceCredential: true
+    },
+    DeviceMotion: {
+      accelInterval: 100
+    }
   },
 };
 

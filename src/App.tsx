@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -18,6 +17,7 @@ import AIFeatures from "./components/ai/AIFeatures";
 import BackupManager from "./components/backup/BackupManager";
 import SecureCamera from "./components/camera/SecureCamera";
 import VoiceRecorder from "./components/voice/VoiceRecorder";
+import RecycleBin from "./components/vault/RecycleBin";
 
 // Providers
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -82,6 +82,11 @@ const AppContent = () => {
         <Route path="/files/:folderId" element={
           <ProtectedRoute>
             <FileManager />
+          </ProtectedRoute>
+        } />
+        <Route path="/recycle-bin" element={
+          <ProtectedRoute>
+            <RecycleBin />
           </ProtectedRoute>
         } />
         <Route path="/settings" element={

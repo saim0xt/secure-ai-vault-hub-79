@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aparajita/capacitor-biometric-auth": "^9.0.0",
     "@capacitor/app": "^7.0.1",
     "@capacitor/camera": "^7.0.1",
     "@capacitor/cli": "^7.3.0",
@@ -23,7 +24,9 @@
     "@capacitor/keyboard": "^7.0.1",
     "@capacitor/local-notifications": "^7.0.1",
     "@capacitor/preferences": "^7.0.1",
+    "@capacitor/share": "^7.0.1",
     "@capacitor/status-bar": "^7.0.1",
+    "@capacitor/toast": "^7.0.1",
     "@hookform/resolvers": "^3.9.0",
     "@radix-ui/react-accordion": "^1.2.0",
     "@radix-ui/react-alert-dialog": "^1.1.1",

@@ -1,7 +1,10 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Preferences } from '@capacitor/preferences';
+import { Share } from '@capacitor/share';
 import CryptoJS from 'crypto-js';
+import { RecycleBinService, DeletedFile } from '@/services/RecycleBinService';
+import { FileViewerService } from '@/services/FileViewerService';
+import { DuplicateDetectionService, DuplicateGroup } from '@/services/DuplicateDetectionService';
 
 export interface VaultFile {
   id: string;
@@ -28,12 +31,14 @@ export interface VaultFolder {
 interface VaultContextType {
   files: VaultFile[];
   folders: VaultFolder[];
+  selectedFiles: string[];
   currentFolder: string | null;
   addFile: (file: File, folderId?: string) => Promise<void>;
-  deleteFile: (fileId: string) => Promise<void>;
+  deleteFile: (fileId: string, permanent?: boolean) => Promise<void>;
   addFolder: (name: string, parentId?: string) => Promise<void>;
   deleteFolder: (folderId: string) => Promise<void>;
   moveFile: (fileId: string, targetFolderId?: string) => Promise<void>;
+  moveFiles: (fileIds: string[], targetFolderId?: string) => Promise<void>;
   renameFile: (fileId: string, newName: string) => Promise<void>;
   renameFolder: (folderId: string, newName: string) => Promise<void>;
   searchFiles: (query: string) => VaultFile[];
@@ -42,6 +47,18 @@ interface VaultContextType {
   removeTag: (fileId: string, tag: string) => Promise<void>;
   getStorageUsage: () => { used: number; total: number };
   setCurrentFolder: (folderId: string | null) => void;
+  toggleFileSelection: (fileId: string) => void;
+  selectAllFiles: () => void;
+  clearSelection: () => void;
+  bulkDelete: (fileIds: string[], permanent?: boolean) => Promise<void>;
+  bulkMove: (fileIds: string[], targetFolderId?: string) => Promise<void>;
+  exportFile: (fileId: string) => Promise<void>;
+  exportFiles: (fileIds: string[]) => Promise<void>;
+  getRecycleBin: () => Promise<DeletedFile[]>;
+  restoreFromRecycleBin: (fileId: string) => Promise<void>;
+  emptyRecycleBin: () => Promise<void>;
+  findDuplicates: () => Promise<DuplicateGroup[]>;
+  cleanupDuplicates: (duplicateGroups: DuplicateGroup[]) => Promise<void>;
   loading: boolean;
 }
 
@@ -58,6 +75,7 @@ export const useVault = () => {
 export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [files, setFiles] = useState<VaultFile[]>([]);
   const [folders, setFolders] = useState<VaultFolder[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -153,9 +171,19 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const deleteFile = async (fileId: string) => {
-    const updatedFiles = files.filter(file => file.id !== fileId);
-    await saveFiles(updatedFiles);
+  const deleteFile = async (fileId: string, permanent: boolean = false) => {
+    const fileToDelete = files.find(f => f.id === fileId);
+    if (!fileToDelete) return;
+
+    if (permanent) {
+      const updatedFiles = files.filter(file => file.id !== fileId);
+      await saveFiles(updatedFiles);
+    } else {
+      // Move to recycle bin
+      await RecycleBinService.addToRecycleBin(fileToDelete);
+      const updatedFiles = files.filter(file => file.id !== fileId);
+      await saveFiles(updatedFiles);
+    }
   };
 
   const addFolder = async (name: string, parentId?: string) => {
@@ -184,6 +212,13 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const moveFile = async (fileId: string, targetFolderId?: string) => {
     const updatedFiles = files.map(file =>
       file.id === fileId ? { ...file, folderId: targetFolderId } : file
+    );
+    await saveFiles(updatedFiles);
+  };
+
+  const moveFiles = async (fileIds: string[], targetFolderId?: string) => {
+    const updatedFiles = files.map(file =>
+      fileIds.includes(file.id) ? { ...file, folderId: targetFolderId } : file
     );
     await saveFiles(updatedFiles);
   };
@@ -236,16 +271,115 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { used, total };
   };
 
+  const toggleFileSelection = (fileId: string) => {
+    setSelectedFiles(prev => 
+      prev.includes(fileId) 
+        ? prev.filter(id => id !== fileId)
+        : [...prev, fileId]
+    );
+  };
+
+  const selectAllFiles = () => {
+    const currentFiles = files.filter(file => file.folderId === currentFolder);
+    setSelectedFiles(currentFiles.map(f => f.id));
+  };
+
+  const clearSelection = () => {
+    setSelectedFiles([]);
+  };
+
+  const bulkDelete = async (fileIds: string[], permanent: boolean = false) => {
+    for (const fileId of fileIds) {
+      await deleteFile(fileId, permanent);
+    }
+    clearSelection();
+  };
+
+  const bulkMove = async (fileIds: string[], targetFolderId?: string) => {
+    await moveFiles(fileIds, targetFolderId);
+    clearSelection();
+  };
+
+  const exportFile = async (fileId: string) => {
+    try {
+      const file = files.find(f => f.id === fileId);
+      if (!file) throw new Error('File not found');
+
+      const exportedPath = await FileViewerService.exportFile(file);
+      
+      // Share the file
+      await Share.share({
+        title: `Export ${file.name}`,
+        text: `Exported from Vaultix: ${file.name}`,
+        url: exportedPath,
+        dialogTitle: 'Export File'
+      });
+    } catch (error) {
+      console.error('Error exporting file:', error);
+      throw error;
+    }
+  };
+
+  const exportFiles = async (fileIds: string[]) => {
+    try {
+      for (const fileId of fileIds) {
+        await exportFile(fileId);
+      }
+    } catch (error) {
+      console.error('Error exporting files:', error);
+      throw error;
+    }
+  };
+
+  const getRecycleBin = async (): Promise<DeletedFile[]> => {
+    return await RecycleBinService.getRecycleBin();
+  };
+
+  const restoreFromRecycleBin = async (fileId: string) => {
+    const restoredFile = await RecycleBinService.restoreFile(fileId);
+    if (restoredFile) {
+      // Remove deletion metadata and restore to vault
+      const { deletedAt, originalFolderId, ...fileData } = restoredFile;
+      const restoredVaultFile: VaultFile = {
+        ...fileData,
+        folderId: originalFolderId
+      };
+      
+      const updatedFiles = [...files, restoredVaultFile];
+      await saveFiles(updatedFiles);
+    }
+  };
+
+  const emptyRecycleBin = async () => {
+    await RecycleBinService.emptyRecycleBin();
+  };
+
+  const findDuplicates = async (): Promise<DuplicateGroup[]> => {
+    return await DuplicateDetectionService.findDuplicates(files);
+  };
+
+  const cleanupDuplicates = async (duplicateGroups: DuplicateGroup[]) => {
+    for (const group of duplicateGroups) {
+      // Keep the first file, delete the rest
+      const [keepFile, ...deleteFiles] = group.files;
+      for (const file of deleteFiles) {
+        await deleteFile(file.id, false); // Move to recycle bin
+      }
+    }
+  };
+
   return (
     <VaultContext.Provider value={{
       files,
       folders,
+      selectedFiles,
       currentFolder,
       addFile,
       deleteFile,
       addFolder,
       deleteFolder,
       moveFile,
+      moveFiles,
       renameFile,
       renameFolder,
       searchFiles,
@@ -254,6 +388,18 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       removeTag,
       getStorageUsage,
       setCurrentFolder,
+      toggleFileSelection,
+      selectAllFiles,
+      clearSelection,
+      bulkDelete,
+      bulkMove,
+      exportFile,
+      exportFiles,
+      getRecycleBin,
+      restoreFromRecycleBin,
+      emptyRecycleBin,
+      findDuplicates,
+      cleanupDuplicates,
       loading,
     }}>
       {children}
