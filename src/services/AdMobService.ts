@@ -1,3 +1,4 @@
+
 import { AdMob, BannerAdOptions, BannerAdSize, BannerAdPosition, RewardAdOptions, AdmobConsentStatus, AdmobConsentInfo } from '@capacitor-community/admob';
 import { Preferences } from '@capacitor/preferences';
 
@@ -111,7 +112,7 @@ export class AdMobService {
       const result = await AdMob.showRewardVideoAd();
       
       console.log('Rewarded ad completed:', result);
-      return { shown: true, rewarded: result.reward !== undefined };
+      return { shown: true, rewarded: result.reward !== null && result.reward !== undefined };
     } catch (error) {
       console.error('Failed to show rewarded ad:', error);
       return { shown: false, rewarded: false };

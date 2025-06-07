@@ -34,7 +34,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasPin, setHasPin] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
-  const [fakeVaultMode, setFakeVaultMode] = useState(false);
+  const [fakeVaultMode, setFakeVaultModeState] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const [isLocked, setIsLocked] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -151,7 +151,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     console.log('Logout initiated');
     setIsAuthenticated(false);
-    setFakeVaultMode(false);
+    setFakeVaultModeState(false);
   };
 
   const changePin = async (oldPin: string, newPin: string): Promise<boolean> => {
@@ -181,11 +181,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const setFakeVaultMode = (mode: boolean) => {
-    setFakeVaultMode(mode);
+    setFakeVaultModeState(mode);
   };
 
   const toggleFakeVault = () => {
-    setFakeVaultMode(!fakeVaultMode);
+    setFakeVaultModeState(!fakeVaultMode);
   };
 
   const resetAttempts = async () => {

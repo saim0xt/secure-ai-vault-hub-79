@@ -33,7 +33,7 @@ export class BackupManager {
       
       // Convert to JSON and encrypt
       const jsonData = JSON.stringify(backupData);
-      const encryptedData = FileEncryption.encryptFile(jsonData);
+      const encryptedData = FileEncryption.encryptFile(jsonData, password);
       
       // Create backup file
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -83,7 +83,7 @@ export class BackupManager {
       });
       
       // Decrypt data
-      const decryptedData = FileEncryption.decryptFile(result.data as string);
+      const decryptedData = FileEncryption.decryptFile(result.data as string, password);
       const backupData: BackupData = JSON.parse(decryptedData);
       
       // Validate backup version
