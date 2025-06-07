@@ -156,7 +156,7 @@ export class AIProcessingService {
       const result = await response.json();
       const annotations = result.responses[0];
       
-      const tags = annotations.labelAnnotations?.map((label: any) => String(label.description).toLowerCase()) || [];
+      const tags: string[] = annotations.labelAnnotations?.map((label: any) => String(label.description).toLowerCase()) || [];
       const categories = [...new Set(tags.map((tag: string) => tag.split(' ')[0]))];
       const objects = annotations.localizedObjectAnnotations?.map((obj: any) => ({
         name: obj.name,
