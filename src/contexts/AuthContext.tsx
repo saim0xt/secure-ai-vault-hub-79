@@ -1,7 +1,7 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Preferences } from '@capacitor/preferences';
 import CryptoJS from 'crypto-js';
+import { IntruderDetection } from '@/components/security/IntruderDetection';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -16,6 +16,7 @@ interface AuthContextType {
   toggleFakeVault: () => void;
   attempts: number;
   resetAttempts: () => void;
+  isLocked: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,10 +35,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [fakeVaultMode, setFakeVaultMode] = useState(false);
   const [attempts, setAttempts] = useState(0);
+  const [isLocked, setIsLocked] = useState(false);
 
   useEffect(() => {
     checkExistingPin();
     checkBiometricSettings();
+    checkLockStatus();
   }, []);
 
   const checkExistingPin = async () => {
@@ -58,6 +61,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const checkLockStatus = async () => {
+    try {
+      const { value } = await Preferences.get({ key: 'vaultix_lock_status' });
+      setIsLocked(value === 'true');
+    } catch (error) {
+      console.error('Error checking lock status:', error);
+    }
+  };
+
   const hashPin = (pin: string): string => {
     return CryptoJS.SHA256(pin + 'vaultix_salt').toString();
   };
@@ -68,6 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await Preferences.set({ key: 'vaultix_pin_hash', value: hashedPin });
       setHasPin(true);
       setIsAuthenticated(true);
+      setAttempts(0);
     } catch (error) {
       console.error('Error setting up PIN:', error);
       throw error;
@@ -82,11 +95,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (storedHash === inputHash) {
         setIsAuthenticated(true);
         setAttempts(0);
+        setIsLocked(false);
+        await Preferences.remove({ key: 'vaultix_lock_status' });
         return true;
       } else {
-        setAttempts(prev => prev + 1);
-        // Log break-in attempt
-        await logBreakInAttempt();
+        const newAttempts = attempts + 1;
+        setAttempts(newAttempts);
+        
+        // Log break-in attempt with photo and location
+        await IntruderDetection.logBreakInAttempt('failed_pin');
+        
+        // Lock vault after 5 failed attempts
+        if (newAttempts >= 5) {
+          setIsLocked(true);
+          await Preferences.set({ key: 'vaultix_lock_status', value: 'true' });
+        }
+        
         return false;
       }
     } catch (error) {
@@ -95,7 +119,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     setIsAuthenticated(false);
     setFakeVaultMode(false);
   };
@@ -117,24 +141,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logBreakInAttempt = async () => {
-    try {
-      const timestamp = new Date().toISOString();
-      const { value: existingLogs } = await Preferences.get({ key: 'vaultix_breakin_logs' });
-      const logs = existingLogs ? JSON.parse(existingLogs) : [];
-      
-      logs.push({
-        timestamp,
-        type: 'failed_pin',
-        deviceInfo: 'Mobile Device', // In real app, get actual device info
-      });
-      
-      await Preferences.set({ key: 'vaultix_breakin_logs', value: JSON.stringify(logs) });
-    } catch (error) {
-      console.error('Error logging break-in attempt:', error);
-    }
-  };
-
   const handleBiometricToggle = async (enabled: boolean) => {
     try {
       await Preferences.set({ key: 'vaultix_biometric_enabled', value: enabled.toString() });
@@ -148,8 +154,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setFakeVaultMode(!fakeVaultMode);
   };
 
-  const resetAttempts = () => {
+  const resetAttempts = async () => {
     setAttempts(0);
+    setIsLocked(false);
+    await Preferences.remove({ key: 'vaultix_lock_status' });
   };
 
   return (
@@ -166,6 +174,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toggleFakeVault,
       attempts,
       resetAttempts,
+      isLocked,
     }}>
       {children}
     </AuthContext.Provider>

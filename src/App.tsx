@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -16,6 +15,8 @@ import Settings from "./components/settings/Settings";
 import BreakInLogs from "./components/security/BreakInLogs";
 import AIFeatures from "./components/ai/AIFeatures";
 import BackupManager from "./components/backup/BackupManager";
+import SecureCamera from "./components/camera/SecureCamera";
+import VoiceRecorder from "./components/voice/VoiceRecorder";
 
 // Providers
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -99,6 +100,16 @@ const AppContent = () => {
         <Route path="/backup" element={
           <ProtectedRoute>
             <BackupManager />
+          </ProtectedRoute>
+        } />
+        <Route path="/camera" element={
+          <ProtectedRoute>
+            <SecureCamera />
+          </ProtectedRoute>
+        } />
+        <Route path="/voice-recorder" element={
+          <ProtectedRoute>
+            <VoiceRecorder />
           </ProtectedRoute>
         } />
         <Route path="*" element={<Navigate to="/auth" />} />

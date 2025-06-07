@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -21,7 +20,8 @@ import {
   Star,
   Clock,
   BarChart3,
-  Lock
+  Lock,
+  Mic
 } from 'lucide-react';
 
 const VaultDashboard = () => {
@@ -78,17 +78,17 @@ const VaultDashboard = () => {
       color: 'from-blue-500 to-purple-600'
     },
     {
-      label: 'Camera',
-      description: 'Take secure photos and videos',
+      label: 'Secure Camera',
+      description: 'Take photos directly to vault',
       icon: Camera,
       action: () => navigate('/camera'),
       color: 'from-green-500 to-blue-600'
     },
     {
-      label: 'Import Files',
-      description: 'Add files to your vault',
-      icon: Upload,
-      action: () => document.getElementById('file-input')?.click(),
+      label: 'Voice Recorder',
+      description: 'Record voice notes securely',
+      icon: Mic,
+      action: () => navigate('/voice-recorder'),
       color: 'from-purple-500 to-pink-600'
     },
     {
