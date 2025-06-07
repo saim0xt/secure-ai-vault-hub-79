@@ -1,8 +1,6 @@
-
 import { Preferences } from '@capacitor/preferences';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-import { Zip } from '@capacitor/zip';
 import CryptoJS from 'crypto-js';
 import { GoogleDriveService } from './GoogleDriveService';
 

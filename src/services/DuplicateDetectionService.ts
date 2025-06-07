@@ -27,7 +27,12 @@ export class DuplicateDetectionService {
     return DuplicateDetectionService.instance;
   }
 
-  async findDuplicates(files: any[]): Promise<DuplicateGroup[]> {
+  static async findDuplicates(files: any[]): Promise<DuplicateGroup[]> {
+    const instance = DuplicateDetectionService.getInstance();
+    return instance.findDuplicatesInternal(files);
+  }
+
+  private async findDuplicatesInternal(files: any[]): Promise<DuplicateGroup[]> {
     try {
       const duplicateGroups: DuplicateGroup[] = [];
       

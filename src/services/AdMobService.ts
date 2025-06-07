@@ -1,5 +1,4 @@
-
-import { AdMob, BannerAdOptions, BannerAdSize, BannerAdPosition, InterstitialAdOptions, RewardAdOptions, AdMobRewardItem, AdLoadInfo, AdShowInfo } from '@capacitor-community/admob';
+import { AdMob, BannerAdOptions, BannerAdSize, BannerAdPosition, RewardAdOptions, AdMobRewardItem, AdLoadInfo } from '@capacitor-community/admob';
 import { Preferences } from '@capacitor/preferences';
 
 export interface AdMobConfig {
@@ -50,7 +49,6 @@ export class AdMobService {
       }
 
       await AdMob.initialize({
-        requestTrackingAuthorization: true,
         testingDevices: this.config.testDeviceIds,
         initializeForTesting: this.config.testDeviceIds.length > 0
       });
@@ -127,7 +125,7 @@ export class AdMobService {
     }
 
     try {
-      const result = await AdMob.showInterstitial();
+      await AdMob.showInterstitial();
       this.interstitialLoaded = false;
       await this.trackImpression('interstitial');
       
@@ -157,7 +155,7 @@ export class AdMobService {
       
       return { 
         rewarded: true, 
-        reward: result.reward 
+        reward: result
       };
     } catch (error) {
       console.error('Failed to show rewarded ad:', error);
@@ -169,7 +167,7 @@ export class AdMobService {
     if (!this.config.interstitialAdUnitId) return;
 
     try {
-      const options: InterstitialAdOptions = {
+      const options = {
         adId: this.config.interstitialAdUnitId,
         isTesting: this.config.testDeviceIds.length > 0
       };

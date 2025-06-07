@@ -79,9 +79,6 @@ export class BiometricService {
         androidTitle: 'Vaultix Authentication',
         androidSubtitle: 'Use your biometric to unlock vault',
         androidConfirmationRequired: config.requireConfirmation,
-        androidBiometryRequiredTitle: 'Biometric Required',
-        androidBiometryNotRecognizedTitle: 'Not Recognized',
-        androidDeviceCredentialAllowed: config.fallbackToDeviceCredentials,
         androidMaxAttempts: 3
       };
 
@@ -119,7 +116,6 @@ export class BiometricService {
         androidTitle: title,
         androidSubtitle: subtitle,
         androidConfirmationRequired: config.requireConfirmation,
-        androidDeviceCredentialAllowed: config.fallbackToDeviceCredentials,
         androidMaxAttempts: 5
       };
 
@@ -208,8 +204,6 @@ export class BiometricService {
         return 'Face Recognition';
       case BiometryType.irisAuthentication:
         return 'Iris Scan';
-      case BiometryType.voiceAuthentication:
-        return 'Voice Recognition';
       default:
         return 'Unknown';
     }

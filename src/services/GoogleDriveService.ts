@@ -1,7 +1,6 @@
-
 import { Preferences } from '@capacitor/preferences';
 import { Browser } from '@capacitor/browser';
-import { App } from '@capacitor/app';
+import { App, PluginListenerHandle } from '@capacitor/app';
 
 export interface DriveFile {
   id: string;
@@ -110,26 +109,32 @@ export class GoogleDriveService {
 
       // Listen for app URL scheme callback
       return new Promise((resolve) => {
-        const listener = App.addListener('appUrlOpen', async (data) => {
-          const url = new URL(data.url);
-          const code = url.searchParams.get('code');
-          
-          if (code) {
-            try {
-              await this.exchangeCodeForTokens(code);
-              listener.remove();
-              resolve(true);
-            } catch (error) {
-              console.error('Token exchange failed:', error);
-              listener.remove();
-              resolve(false);
+        let listener: PluginListenerHandle | null = null;
+        
+        const setupListener = async () => {
+          listener = await App.addListener('appUrlOpen', async (data) => {
+            const url = new URL(data.url);
+            const code = url.searchParams.get('code');
+            
+            if (code) {
+              try {
+                await this.exchangeCodeForTokens(code);
+                if (listener) listener.remove();
+                resolve(true);
+              } catch (error) {
+                console.error('Token exchange failed:', error);
+                if (listener) listener.remove();
+                resolve(false);
+              }
             }
-          }
-        });
+          });
+        };
+
+        setupListener();
 
         // Timeout after 5 minutes
         setTimeout(() => {
-          listener.remove();
+          if (listener) listener.remove();
           resolve(false);
         }, 300000);
       });

@@ -1,34 +1,61 @@
-
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { FileOpener } from '@capacitor-community/file-opener';
-import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import CryptoJS from 'crypto-js';
 
-export interface FilePreview {
-  type: 'image' | 'video' | 'audio' | 'text' | 'pdf' | 'unsupported';
-  preview: string | null;
-  metadata: Record<string, any>;
-  canEdit: boolean;
-}
-
-export interface FileMetadata {
-  size: number;
-  mimeType: string;
-  dimensions?: { width: number; height: number };
-  duration?: number;
-  pages?: number;
-  encoding?: string;
+interface ViewerConfig {
+  enableThumbnails: boolean;
+  maxPreviewSize: number;
+  supportedFormats: string[];
 }
 
 export class FileViewerService {
   private static instance: FileViewerService;
+  private config: ViewerConfig = {
+    enableThumbnails: true,
+    maxPreviewSize: 10 * 1024 * 1024, // 10MB
+    supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'txt', 'mp4', 'mp3']
+  };
 
   static getInstance(): FileViewerService {
     if (!FileViewerService.instance) {
       FileViewerService.instance = new FileViewerService();
     }
     return FileViewerService.instance;
+  }
+
+  static async exportFile(file: any): Promise<string> {
+    const instance = FileViewerService.getInstance();
+    return instance.exportFileInternal(file);
+  }
+
+  private async exportFileInternal(file: any): Promise<string> {
+    try {
+      // Decrypt file data
+      const decryptedData = this.decryptFileData(file.encryptedData);
+      
+      // Create temporary file for export
+      const tempFileName = `export_${Date.now()}_${file.name}`;
+      const tempPath = `exports/${tempFileName}`;
+      
+      await Filesystem.writeFile({
+        path: tempPath,
+        data: decryptedData,
+        directory: Directory.Documents,
+        encoding: file.type.startsWith('text/') ? Encoding.UTF8 : undefined
+      });
+
+      // Get the file URI
+      const fileInfo = await Filesystem.getUri({
+        directory: Directory.Documents,
+        path: tempPath
+      });
+
+      return fileInfo.uri;
+    } catch (error) {
+      console.error('Failed to export file:', error);
+      throw new Error('Failed to export file');
+    }
   }
 
   async generatePreview(file: any): Promise<FilePreview> {
