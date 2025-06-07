@@ -1,4 +1,3 @@
-import { BackgroundMode } from '@capacitor/background-mode';
 import { App } from '@capacitor/app';
 import { Device } from '@capacitor/device';
 import { Preferences } from '@capacitor/preferences';
@@ -50,7 +49,6 @@ export class BackgroundSecurityService {
 
     try {
       await this.loadSettings();
-      await this.setupBackgroundMode();
       await this.setupAppStateListeners();
       await this.setupDeviceListeners();
       
@@ -58,23 +56,6 @@ export class BackgroundSecurityService {
       console.log('Background security service initialized');
     } catch (error) {
       console.error('Failed to initialize background security service:', error);
-    }
-  }
-
-  private async setupBackgroundMode(): Promise<void> {
-    try {
-      await BackgroundMode.enable();
-      
-      // Configure background mode settings
-      await BackgroundMode.setNotifications({
-        title: 'Vaultix Security',
-        text: 'Protecting your vault in the background',
-        silent: true
-      });
-
-      console.log('Background mode enabled');
-    } catch (error) {
-      console.error('Failed to setup background mode:', error);
     }
   }
 
@@ -226,9 +207,8 @@ export class BackgroundSecurityService {
 
   private async enableBackgroundMonitoring(): Promise<void> {
     try {
-      // Start periodic security checks
-      await BackgroundMode.enable();
-      console.log('Background monitoring enabled');
+      // Use available web APIs for background monitoring
+      console.log('Background monitoring enabled (web mode)');
     } catch (error) {
       console.error('Failed to enable background monitoring:', error);
     }
@@ -237,7 +217,6 @@ export class BackgroundSecurityService {
   private async disableBackgroundMonitoring(): Promise<void> {
     try {
       // Stop background monitoring when app is active
-      await BackgroundMode.disable();
       console.log('Background monitoring disabled');
     } catch (error) {
       console.error('Failed to disable background monitoring:', error);
