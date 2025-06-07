@@ -18,16 +18,20 @@ import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.WindowManager;
+import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
 import app.lovable.R;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.util.List;
 
 public class SecurityMonitorService extends Service {
     private static final String CHANNEL_ID = "security_monitor_channel";
     private static final int NOTIFICATION_ID = 1003;
+    private static final String TAG = "SecurityMonitorService";
     
     private WindowManager windowManager;
     private View overlayView;
@@ -35,6 +39,9 @@ public class SecurityMonitorService extends Service {
     private Runnable monitoringRunnable;
     private boolean isMonitoring = false;
     private boolean stealthMode = false;
+    private boolean rootDetected = false;
+    private boolean debuggerDetected = false;
+    private boolean emulatorDetected = false;
 
     @Override
     public void onCreate() {
@@ -42,6 +49,9 @@ public class SecurityMonitorService extends Service {
         createNotificationChannel();
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         handler = new Handler();
+        
+        // Perform initial security checks
+        performSecurityChecks();
     }
 
     @Override
@@ -54,6 +64,8 @@ public class SecurityMonitorService extends Service {
             enableStealthMode();
         } else if ("DISABLE_STEALTH".equals(action)) {
             disableStealthMode();
+        } else if ("STOP_MONITORING".equals(action)) {
+            stopMonitoring();
         }
         
         if (isMonitoring) {
@@ -74,11 +86,100 @@ public class SecurityMonitorService extends Service {
         stopMonitoring();
     }
 
+    private void performSecurityChecks() {
+        // Check for root
+        rootDetected = checkForRoot();
+        if (rootDetected) {
+            sendSecurityAlert("Root access detected", "critical");
+        }
+        
+        // Check for debugger
+        debuggerDetected = checkForDebugger();
+        if (debuggerDetected) {
+            sendSecurityAlert("Debugger detected", "high");
+        }
+        
+        // Check for emulator
+        emulatorDetected = checkForEmulator();
+        if (emulatorDetected) {
+            sendSecurityAlert("Emulator detected", "medium");
+        }
+        
+        Log.d(TAG, "Security checks completed. Root: " + rootDetected + 
+              ", Debugger: " + debuggerDetected + ", Emulator: " + emulatorDetected);
+    }
+
+    private boolean checkForRoot() {
+        // Check for common root indicators
+        String[] rootPaths = {
+            "/system/app/Superuser.apk",
+            "/sbin/su",
+            "/system/bin/su",
+            "/system/xbin/su",
+            "/data/local/xbin/su",
+            "/data/local/bin/su",
+            "/system/sd/xbin/su",
+            "/system/bin/failsafe/su",
+            "/data/local/su",
+            "/su/bin/su"
+        };
+        
+        for (String path : rootPaths) {
+            if (new java.io.File(path).exists()) {
+                return true;
+            }
+        }
+        
+        // Try to execute su command
+        try {
+            Process process = Runtime.getRuntime().exec("su");
+            return true;
+        } catch (Exception e) {
+            // su command not found or access denied
+        }
+        
+        return false;
+    }
+
+    private boolean checkForDebugger() {
+        // Check if debugger is attached
+        return android.os.Debug.isDebuggerConnected() || android.os.Debug.waitingForDebugger();
+    }
+
+    private boolean checkForEmulator() {
+        // Check various emulator indicators
+        String buildModel = Build.MODEL;
+        String buildManufacturer = Build.MANUFACTURER;
+        String buildBrand = Build.BRAND;
+        String buildDevice = Build.DEVICE;
+        String buildProduct = Build.PRODUCT;
+        
+        if (buildModel.contains("google_sdk") ||
+            buildModel.contains("Emulator") ||
+            buildModel.contains("Android SDK") ||
+            buildManufacturer.contains("Genymotion") ||
+            buildBrand.startsWith("generic") ||
+            buildDevice.startsWith("generic") ||
+            buildProduct.contains("sdk") ||
+            buildProduct.contains("emulator")) {
+            return true;
+        }
+        
+        // Check for typical emulator properties
+        String androidId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+        if ("9774d56d682e549c".equals(androidId)) {
+            return true; // Default emulator Android ID
+        }
+        
+        return false;
+    }
+
     private void startMonitoring() {
         if (!isMonitoring && canDrawOverlays()) {
             createSecurityOverlay();
             startUsageMonitoring();
             isMonitoring = true;
+            Log.d(TAG, "Security monitoring started");
         }
     }
 
@@ -87,19 +188,19 @@ public class SecurityMonitorService extends Service {
             removeSecurityOverlay();
             stopUsageMonitoring();
             isMonitoring = false;
+            Log.d(TAG, "Security monitoring stopped");
         }
     }
 
     private void enableStealthMode() {
         stealthMode = true;
         startMonitoring();
+        Log.d(TAG, "Stealth mode enabled");
     }
 
     private void disableStealthMode() {
         stealthMode = false;
-        if (!isMonitoring) {
-            stopMonitoring();
-        }
+        Log.d(TAG, "Stealth mode disabled");
     }
 
     private boolean canDrawOverlays() {
@@ -132,8 +233,9 @@ public class SecurityMonitorService extends Service {
 
         try {
             windowManager.addView(overlayView, params);
+            Log.d(TAG, "Security overlay created");
         } catch (Exception e) {
-            // Handle overlay permission not granted
+            Log.e(TAG, "Failed to create overlay", e);
         }
     }
 
@@ -141,8 +243,9 @@ public class SecurityMonitorService extends Service {
         if (overlayView != null) {
             try {
                 windowManager.removeView(overlayView);
+                Log.d(TAG, "Security overlay removed");
             } catch (Exception e) {
-                // View already removed
+                Log.e(TAG, "Failed to remove overlay", e);
             }
             overlayView = null;
         }
@@ -152,9 +255,12 @@ public class SecurityMonitorService extends Service {
         monitoringRunnable = new Runnable() {
             @Override
             public void run() {
-                checkAppUsage();
-                detectSuspiciousActivity();
-                handler.postDelayed(this, 5000); // Check every 5 seconds
+                if (isMonitoring) {
+                    checkAppUsage();
+                    detectSuspiciousActivity();
+                    checkSecurityThreats();
+                    handler.postDelayed(this, 5000); // Check every 5 seconds
+                }
             }
         };
         handler.post(monitoringRunnable);
@@ -176,10 +282,8 @@ public class SecurityMonitorService extends Service {
             List<UsageStats> stats = usageStatsManager.queryUsageStats(
                 UsageStatsManager.INTERVAL_BEST, startTime, endTime);
 
-            // Analyze usage patterns for suspicious activity
             for (UsageStats usageStat : stats) {
                 if (usageStat.getLastTimeUsed() > startTime) {
-                    // App was used recently - check if it's suspicious
                     checkSuspiciousApp(usageStat.getPackageName());
                 }
             }
@@ -187,35 +291,82 @@ public class SecurityMonitorService extends Service {
     }
 
     private void checkSuspiciousApp(String packageName) {
-        // List of apps that might indicate tampering attempts
         String[] suspiciousApps = {
             "com.android.shell",
-            "com.android.packageinstaller",
-            "com.android.settings",
-            "com.android.systemui"
+            "com.android.packageinstaller", 
+            "com.topjohnwu.magisk",
+            "eu.chainfire.supersu",
+            "com.noshufou.android.su",
+            "com.koushikdutta.superuser",
+            "com.zachspong.temprootremovejb",
+            "com.ramdroid.appquarantine",
+            "com.android.vending.billing.InAppBillingService.COIN",
+            "com.chelpus.lackypatch",
+            "com.android.vending.billing.InAppBillingService.LACK"
         };
 
         for (String suspiciousApp : suspiciousApps) {
             if (packageName.contains(suspiciousApp)) {
-                sendSecurityAlert("Suspicious app detected: " + packageName);
+                sendSecurityAlert("Suspicious app detected: " + packageName, "high");
                 break;
             }
         }
     }
 
     private void detectSuspiciousActivity() {
-        // Implement additional tamper detection logic
-        // This could include checking for:
-        // - Root detection
-        // - Debugger detection
-        // - Emulator detection
-        // - Hook detection
+        // Check for hook frameworks
+        try {
+            throw new Exception();
+        } catch (Exception e) {
+            for (StackTraceElement element : e.getStackTrace()) {
+                if (element.getClassName().contains("de.robv.android.xposed") ||
+                    element.getClassName().contains("com.android.internal.os.ZygoteInit") ||
+                    element.getClassName().contains("com.saurik.substrate")) {
+                    sendSecurityAlert("Hook framework detected: " + element.getClassName(), "critical");
+                    break;
+                }
+            }
+        }
+        
+        // Check for frida
+        checkForFrida();
     }
 
-    private void sendSecurityAlert(String message) {
+    private void checkForFrida() {
+        try {
+            Process process = Runtime.getRuntime().exec("ps");
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.contains("frida") || line.contains("gum-js-loop")) {
+                    sendSecurityAlert("Frida detected in process list", "critical");
+                    break;
+                }
+            }
+            reader.close();
+        } catch (Exception e) {
+            // Process list check failed
+        }
+    }
+
+    private void checkSecurityThreats() {
+        // Re-check security status periodically
+        if (checkForDebugger() && !debuggerDetected) {
+            debuggerDetected = true;
+            sendSecurityAlert("Debugger attached during runtime", "critical");
+        }
+    }
+
+    private void sendSecurityAlert(String message, String severity) {
+        Log.w(TAG, "Security Alert (" + severity + "): " + message);
+        
         Intent intent = new Intent("vaultix.security.alert");
         intent.putExtra("message", message);
+        intent.putExtra("severity", severity);
         intent.putExtra("timestamp", System.currentTimeMillis());
+        intent.putExtra("root_detected", rootDetected);
+        intent.putExtra("debugger_detected", debuggerDetected);
+        intent.putExtra("emulator_detected", emulatorDetected);
         sendBroadcast(intent);
     }
 

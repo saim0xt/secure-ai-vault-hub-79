@@ -1,0 +1,8 @@
+
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="notification_accent_color">#FF6B35</color>
+    <color name="security_red">#FF3B30</color>
+    <color name="security_green">#34C759</color>
+    <color name="security_yellow">#FFCC02</color>
+</resources>

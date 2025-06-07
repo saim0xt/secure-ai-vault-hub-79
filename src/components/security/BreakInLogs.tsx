@@ -5,7 +5,7 @@ import { Preferences } from '@capacitor/preferences';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Shield, AlertTriangle, MapPin, Calendar } from 'lucide-react';
+import { ArrowLeft, Shield, AlertTriangle, MapPin, Calendar, Camera } from 'lucide-react';
 
 interface BreakInLog {
   timestamp: string;
@@ -13,6 +13,7 @@ interface BreakInLog {
   deviceInfo: string;
   location?: string;
   photoPath?: string;
+  ipAddress?: string;
 }
 
 const BreakInLogs = () => {
@@ -120,53 +121,45 @@ const BreakInLogs = () => {
 
             {logs.map((log, index) => (
               <Card key={index} className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <Badge className={getLogTypeColor(log.type)}>
-                        {getLogTypeLabel(log.type)}
-                      </Badge>
-                      <span className="text-sm text-muted-foreground">
-                        {new Date(log.timestamp).toLocaleString()}
-                      </span>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2 text-sm">
-                        <Calendar className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-foreground">
-                          {new Date(log.timestamp).toLocaleDateString('en-US', {
-                            weekday: 'long',
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </span>
-                      </div>
-                      
-                      <div className="flex items-center space-x-2 text-sm">
-                        <Shield className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-foreground">{log.deviceInfo}</span>
-                      </div>
-                      
-                      {log.location && (
-                        <div className="flex items-center space-x-2 text-sm">
-                          <MapPin className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-foreground">{log.location}</span>
-                        </div>
-                      )}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Badge className={getLogTypeColor(log.type)}>
+                      {getLogTypeLabel(log.type)}
+                    </Badge>
+                    <div className="flex items-center space-x-1 text-sm text-muted-foreground">
+                      <Calendar className="w-4 h-4" />
+                      <span>{new Date(log.timestamp).toLocaleString()}</span>
                     </div>
                   </div>
-                  
-                  {log.photoPath && (
-                    <div className="ml-4">
-                      <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center">
-                        <span className="text-xs text-muted-foreground">Photo</span>
-                      </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm">
+                      <span className="font-medium">Device:</span> {log.deviceInfo}
                     </div>
-                  )}
+
+                    {log.location && (
+                      <div className="flex items-center space-x-2 text-sm">
+                        <MapPin className="w-4 h-4 text-muted-foreground" />
+                        <span>Location: {log.location}</span>
+                      </div>
+                    )}
+
+                    {log.ipAddress && (
+                      <div className="text-sm">
+                        <span className="font-medium">IP Address:</span> {log.ipAddress}
+                      </div>
+                    )}
+
+                    {log.photoPath && (
+                      <div className="flex items-center space-x-2 text-sm">
+                        <Camera className="w-4 h-4 text-muted-foreground" />
+                        <span>Photo captured</span>
+                        <Button variant="outline" size="sm">
+                          View Photo
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </Card>
             ))}
