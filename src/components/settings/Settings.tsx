@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,7 +6,7 @@ import { useSecurity } from '@/contexts/SecurityContext';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { ArrowLeft, Shield, Palette, Bell, Cloud, Info } from 'lucide-react';
+import { ArrowLeft, Shield, Palette, Bell, Cloud, Info, Gift } from 'lucide-react';
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -21,6 +20,12 @@ const Settings = () => {
     stealthMode,
     setStealthMode
   } = useSecurity();
+
+  const [adSettings, setAdSettings] = useState({
+    bannerAds: true,
+    rewardedAds: true,
+    interstitialAds: true
+  });
 
   const settingsSections = [
     {
@@ -56,6 +61,18 @@ const Settings = () => {
           onChange: setStealthMode,
         },
         {
+          label: 'Volume Key Patterns',
+          description: 'Configure volume button sequences',
+          type: 'button',
+          action: () => navigate('/volume-patterns'),
+        },
+        {
+          label: 'Background Security',
+          description: 'Configure auto-lock and monitoring',
+          type: 'button',
+          action: () => navigate('/security-settings'),
+        },
+        {
           label: 'Change PIN',
           description: 'Update your vault PIN',
           type: 'button',
@@ -89,6 +106,32 @@ const Settings = () => {
       ],
     },
     {
+      title: 'Rewards & Ads',
+      icon: Gift,
+      items: [
+        {
+          label: 'Rewards Center',
+          description: 'Earn coins and unlock features',
+          type: 'button',
+          action: () => navigate('/rewards'),
+        },
+        {
+          label: 'Banner Ads',
+          description: 'Show banner advertisements',
+          type: 'switch',
+          value: adSettings.bannerAds,
+          onChange: (value: boolean) => setAdSettings(prev => ({ ...prev, bannerAds: value })),
+        },
+        {
+          label: 'Rewarded Ads',
+          description: 'Watch ads to earn coins',
+          type: 'switch',
+          value: adSettings.rewardedAds,
+          onChange: (value: boolean) => setAdSettings(prev => ({ ...prev, rewardedAds: value })),
+        },
+      ],
+    },
+    {
       title: 'Backup & Sync',
       icon: Cloud,
       items: [
@@ -107,6 +150,33 @@ const Settings = () => {
       ],
     },
     {
+      title: 'Notifications',
+      icon: Bell,
+      items: [
+        {
+          label: 'Security Alerts',
+          description: 'Get notified of security events',
+          type: 'switch',
+          value: true,
+          onChange: () => console.log('Toggle security alerts'),
+        },
+        {
+          label: 'Daily Tips',
+          description: 'Receive daily security tips',
+          type: 'switch',
+          value: true,
+          onChange: () => console.log('Toggle daily tips'),
+        },
+        {
+          label: 'Reward Notifications',
+          description: 'Get notified about new rewards',
+          type: 'switch',
+          value: true,
+          onChange: () => console.log('Toggle reward notifications'),
+        },
+      ],
+    },
+    {
       title: 'About',
       icon: Info,
       items: [
@@ -120,6 +190,12 @@ const Settings = () => {
           description: 'View our privacy policy',
           type: 'button',
           action: () => console.log('Privacy policy'),
+        },
+        {
+          label: 'Rate App',
+          description: 'Rate us in the Play Store',
+          type: 'button',
+          action: () => console.log('Rate app'),
         },
       ],
     },

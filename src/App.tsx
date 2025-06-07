@@ -18,6 +18,7 @@ import BackupManager from "./components/backup/BackupManager";
 import SecureCamera from "./components/camera/SecureCamera";
 import VoiceRecorder from "./components/voice/VoiceRecorder";
 import RecycleBin from "./components/vault/RecycleBin";
+import RewardsCenter from "./components/rewards/RewardsCenter";
 
 // Providers
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -35,6 +36,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 const AppContent = () => {
   const [isLoading, setIsLoading] = useState(true);
+  const { fakeVaultMode } = useAuth();
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -46,7 +48,22 @@ const AppContent = () => {
         // Configure keyboard
         await Keyboard.setAccessoryBarVisible({ isVisible: false });
         
-        console.log('Platform initialization successful');
+        // Initialize services
+        const { DeviceMotionService } = await import('./services/DeviceMotionService');
+        const { AdMobService } = await import('./services/AdMobService');
+        const { PushNotificationService } = await import('./services/PushNotificationService');
+        const { VolumeKeyService } = await import('./services/VolumeKeyService');
+        const { BackgroundSecurityService } = await import('./services/BackgroundSecurityService');
+        
+        // Initialize all services
+        await Promise.all([
+          AdMobService.getInstance().initialize(),
+          PushNotificationService.getInstance().initialize(),
+          VolumeKeyService.getInstance().initialize(),
+          BackgroundSecurityService.getInstance().initialize()
+        ]);
+        
+        console.log('Platform and services initialization successful');
       } catch (error) {
         console.log('Platform initialization failed (running in web):', error);
       } finally {
@@ -62,6 +79,16 @@ const AppContent = () => {
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-white text-xl">Loading Vaultix...</div>
       </div>
+    );
+  }
+
+  // Show calculator app if in fake vault mode
+  if (fakeVaultMode) {
+    const CalculatorApp = React.lazy(() => import('./components/disguise/CalculatorApp'));
+    return (
+      <React.Suspense fallback={<div className="min-h-screen bg-black flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
+        <CalculatorApp />
+      </React.Suspense>
     );
   }
 
@@ -87,6 +114,11 @@ const AppContent = () => {
         <Route path="/recycle-bin" element={
           <ProtectedRoute>
             <RecycleBin />
+          </ProtectedRoute>
+        } />
+        <Route path="/rewards" element={
+          <ProtectedRoute>
+            <RewardsCenter />
           </ProtectedRoute>
         } />
         <Route path="/settings" element={

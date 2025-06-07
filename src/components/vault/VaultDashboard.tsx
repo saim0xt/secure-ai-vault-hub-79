@@ -33,7 +33,28 @@ const VaultDashboard = () => {
 
   useEffect(() => {
     setRecentFiles(files.slice(0, 6));
-  }, [files]);
+    
+    // Initialize shake detection
+    const initShakeDetection = async () => {
+      try {
+        const { DeviceMotionService } = await import('@/services/DeviceMotionService');
+        await DeviceMotionService.startShakeDetection(() => {
+          // Lock vault on shake
+          logout();
+        });
+      } catch (error) {
+        console.log('Shake detection not available:', error);
+      }
+    };
+    
+    initShakeDetection();
+    
+    return () => {
+      import('@/services/DeviceMotionService').then(({ DeviceMotionService }) => {
+        DeviceMotionService.stopShakeDetection();
+      });
+    };
+  }, [files, logout]);
 
   const storageUsage = getStorageUsage();
   const storagePercentage = (storageUsage.used / storageUsage.total) * 100;
@@ -92,6 +113,13 @@ const VaultDashboard = () => {
       color: 'from-purple-500 to-pink-600'
     },
     {
+      label: 'Rewards Center',
+      description: 'Earn coins and unlock features',
+      icon: Star,
+      action: () => navigate('/rewards'),
+      color: 'from-yellow-500 to-orange-600'
+    },
+    {
       label: 'AI Features',
       description: 'Smart organization and diary',
       icon: BarChart3,
@@ -136,6 +164,15 @@ const VaultDashboard = () => {
             </div>
           </div>
           <div className="flex items-center space-x-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate('/rewards')}
+              className="relative"
+            >
+              <Star className="w-5 h-5" />
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-500 rounded-full animate-pulse" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"
