@@ -35,8 +35,8 @@ const config: CapacitorConfig = {
     BiometricAuth: {
       allowDeviceCredential: true
     },
-    DeviceMotion: {
-      accelInterval: 100
+    Motion: {
+      interval: 100
     }
   },
 };

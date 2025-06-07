@@ -1,5 +1,5 @@
 
-import { DeviceMotion, DeviceMotionAccelerometerOptions } from '@capacitor/device-motion';
+import { Motion, MotionEventResult, MotionOrientationEventResult } from '@capacitor/motion';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 export interface ShakeDetectionConfig {
@@ -22,12 +22,14 @@ export class DeviceMotionService {
     this.shakeCallback = onShake;
 
     try {
-      const options: DeviceMotionAccelerometerOptions = {
-        frequency: 100 // 100ms intervals
-      };
-
-      this.watchId = await DeviceMotion.addListener('accel', options, (acceleration) => {
-        this.handleAcceleration(acceleration.x, acceleration.y, acceleration.z);
+      this.watchId = await Motion.addListener('accel', (event: MotionEventResult) => {
+        if (event.acceleration) {
+          this.handleAcceleration(
+            event.acceleration.x || 0, 
+            event.acceleration.y || 0, 
+            event.acceleration.z || 0
+          );
+        }
       });
 
       console.log('Shake detection started');
@@ -39,7 +41,7 @@ export class DeviceMotionService {
   static async stopShakeDetection(): Promise<void> {
     if (this.watchId) {
       try {
-        await DeviceMotion.removeListener(this.watchId);
+        await Motion.removeAllListeners();
         this.watchId = null;
         this.shakeCallback = null;
         console.log('Shake detection stopped');

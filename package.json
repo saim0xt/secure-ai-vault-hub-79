@@ -23,6 +23,7 @@
     "@capacitor/ios": "^7.3.0",
     "@capacitor/keyboard": "^7.0.1",
     "@capacitor/local-notifications": "^7.0.1",
+    "@capacitor/motion": "^7.0.0",
     "@capacitor/preferences": "^7.0.1",
     "@capacitor/share": "^7.0.1",
     "@capacitor/status-bar": "^7.0.1",

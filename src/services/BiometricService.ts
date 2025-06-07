@@ -1,5 +1,5 @@
 
-import { BiometricAuth, BiometricAuthOptions, BiometricAuthResponse, BiometricAuthStatus } from '@aparajita/capacitor-biometric-auth';
+import { BiometricAuth, BiometryType, CheckBiometryResult, AuthenticateOptions, AuthenticateResult } from '@aparajita/capacitor-biometric-auth';
 import { Preferences } from '@capacitor/preferences';
 
 export interface BiometricConfig {
@@ -20,7 +20,7 @@ export class BiometricService {
 
   async isAvailable(): Promise<boolean> {
     try {
-      const result = await BiometricAuth.checkBiometry();
+      const result: CheckBiometryResult = await BiometricAuth.checkBiometry();
       return result.isAvailable && result.biometryTypes.length > 0;
     } catch (error) {
       console.error('Biometric availability check failed:', error);
@@ -30,8 +30,8 @@ export class BiometricService {
 
   async getBiometryTypes(): Promise<string[]> {
     try {
-      const result = await BiometricAuth.checkBiometry();
-      return result.biometryTypes;
+      const result: CheckBiometryResult = await BiometricAuth.checkBiometry();
+      return result.biometryTypes.map((type: BiometryType) => type.toString());
     } catch (error) {
       console.error('Failed to get biometry types:', error);
       return [];
@@ -40,7 +40,7 @@ export class BiometricService {
 
   async authenticate(reason: string = 'Authenticate to access your vault'): Promise<boolean> {
     try {
-      const options: BiometricAuthOptions = {
+      const options: AuthenticateOptions = {
         reason,
         cancelTitle: 'Cancel',
         allowDeviceCredential: true,
@@ -51,7 +51,7 @@ export class BiometricService {
         androidNegativeButtonText: 'Cancel'
       };
 
-      const result: BiometricAuthResponse = await BiometricAuth.authenticate(options);
+      const result: AuthenticateResult = await BiometricAuth.authenticate(options);
       return result.isAuthenticated;
     } catch (error) {
       console.error('Biometric authentication failed:', error);
