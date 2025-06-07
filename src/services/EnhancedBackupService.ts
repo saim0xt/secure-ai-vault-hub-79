@@ -198,8 +198,7 @@ export class EnhancedBackupService {
         const files = await this.googleDrive.listFiles();
         const backupFile = files.find(f => f.name === fileName);
         if (backupFile) {
-          // Note: Google Drive API doesn't have delete in this simplified version
-          // In real implementation, add delete method to GoogleDriveService
+          await this.googleDrive.deleteFile(backupFile.id);
         }
       } catch (error) {
         console.log('Cloud backup file not found');
@@ -221,12 +220,11 @@ export class EnhancedBackupService {
   async exportBackup(backupId: string): Promise<void> {
     try {
       const fileName = `vaultix_backup_${backupId}.vbk`;
-      const filePath = `${Directory.Documents}/${fileName}`;
       
       await Share.share({
         title: 'Export Vaultix Backup',
         text: 'Encrypted Vaultix backup file',
-        url: filePath
+        files: [fileName]
       });
     } catch (error) {
       console.error('Failed to export backup:', error);

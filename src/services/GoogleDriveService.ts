@@ -1,4 +1,3 @@
-
 import { Preferences } from '@capacitor/preferences';
 
 export interface DriveFile {
@@ -58,6 +57,22 @@ export class GoogleDriveService {
       }
     } catch (error) {
       console.error('Failed to load Google Drive configuration:', error);
+    }
+  }
+
+  async loadStoredTokens(): Promise<boolean> {
+    try {
+      const { value } = await Preferences.get({ key: 'google_drive_tokens' });
+      if (value) {
+        const tokenData = JSON.parse(value);
+        this.accessToken = tokenData.accessToken;
+        this.refreshToken = tokenData.refreshToken;
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed to load stored tokens:', error);
+      return false;
     }
   }
 
