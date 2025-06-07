@@ -1,5 +1,4 @@
-
-import { BiometricAuth, BiometryType, CheckBiometryResult, AuthenticateOptions, AuthenticateResult } from '@aparajita/capacitor-biometric-auth';
+import { BiometricAuth, BiometryType, CheckBiometryResult, AuthenticateOptions } from '@aparajita/capacitor-biometric-auth';
 import { Preferences } from '@capacitor/preferences';
 
 export interface BiometricConfig {
@@ -47,11 +46,10 @@ export class BiometricService {
         iosFallbackTitle: 'Use Passcode',
         androidTitle: 'Vaultix Authentication',
         androidSubtitle: 'Use your biometric to unlock vault',
-        androidConfirmationRequired: false,
-        androidNegativeButtonText: 'Cancel'
+        androidConfirmationRequired: false
       };
 
-      const result: AuthenticateResult = await BiometricAuth.authenticate(options);
+      const result = await BiometricAuth.authenticate(options);
       return result.isAuthenticated;
     } catch (error) {
       console.error('Biometric authentication failed:', error);

@@ -9,7 +9,7 @@ export interface ShakeDetectionConfig {
 }
 
 export class DeviceMotionService {
-  private static watchId: string | null = null;
+  private static watchId: any = null;
   private static lastShakeTime = 0;
   private static shakeCallback: (() => void) | null = null;
   private static config: ShakeDetectionConfig = {
