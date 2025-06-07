@@ -18,11 +18,13 @@ import DuplicateManager from "./components/vault/DuplicateManager";
 import Settings from "./components/settings/Settings";
 import BreakInLogs from "./components/security/BreakInLogs";
 import AIFeatures from "./components/ai/AIFeatures";
+import EnhancedAIFeatures from "./components/ai/EnhancedAIFeatures";
 import BackupManager from "./components/backup/BackupManager";
 import SecureCamera from "./components/camera/SecureCamera";
 import VoiceRecorder from "./components/voice/VoiceRecorder";
 import RecycleBin from "./components/vault/RecycleBin";
 import RewardsCenter from "./components/rewards/RewardsCenter";
+import TestingSuite from "./components/testing/TestingSuite";
 
 // Providers
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -61,6 +63,10 @@ const AppContent = () => {
         const { NativeSecurityService } = await import('./services/NativeSecurityService');
         const { AutoBackupService } = await import('./services/AutoBackupService');
         const { DialerCodeService } = await import('./services/DialerCodeService');
+        const { EnhancedAIService } = await import('./services/EnhancedAIService');
+        const { CrossDeviceSyncService } = await import('./services/CrossDeviceSyncService');
+        const { AdvancedAnalyticsService } = await import('./services/AdvancedAnalyticsService');
+        const { TestingSuiteService } = await import('./services/TestingSuiteService');
         
         // Initialize all services
         await Promise.all([
@@ -70,10 +76,14 @@ const AppContent = () => {
           BackgroundSecurityService.getInstance().initialize(),
           NativeSecurityService.getInstance().initialize(),
           AutoBackupService.getInstance().initialize(),
-          DialerCodeService.getInstance().initialize()
+          DialerCodeService.getInstance().initialize(),
+          EnhancedAIService.getInstance().initialize(),
+          CrossDeviceSyncService.getInstance().initialize(),
+          AdvancedAnalyticsService.getInstance().initialize(),
+          TestingSuiteService.getInstance().initialize()
         ]);
         
-        console.log('Platform and services initialization successful');
+        console.log('Platform and enhanced services initialization successful');
       } catch (error) {
         console.log('Platform initialization failed (running in web):', error);
       } finally {
@@ -150,6 +160,16 @@ const AppContent = () => {
         <Route path="/ai-features" element={
           <ProtectedRoute>
             <AIFeatures />
+          </ProtectedRoute>
+        } />
+        <Route path="/enhanced-ai" element={
+          <ProtectedRoute>
+            <EnhancedAIFeatures />
+          </ProtectedRoute>
+        } />
+        <Route path="/testing" element={
+          <ProtectedRoute>
+            <TestingSuite />
           </ProtectedRoute>
         } />
         <Route path="/backup" element={
