@@ -1,5 +1,4 @@
-
-import { AdMob, BannerAdOptions, BannerAdSize, BannerAdPosition, InterstitialAdOptions, RewardAdOptions, AdmobConsentStatus, AdmobConsentInfo } from '@capacitor-community/admob';
+import { AdMob, BannerAdOptions, BannerAdSize, BannerAdPosition, RewardAdOptions, AdmobConsentStatus, AdmobConsentInfo } from '@capacitor-community/admob';
 import { Preferences } from '@capacitor/preferences';
 
 export interface AdConfig {
@@ -29,12 +28,11 @@ export class AdMobService {
   async initialize(): Promise<void> {
     try {
       await AdMob.initialize({
-        requestTrackingAuthorization: true,
         testingDevices: ['your-test-device-id'],
         initializeForTesting: this.config.testMode,
       });
 
-      const [consentInfo] = await AdMob.requestConsentInfo();
+      const consentInfo = await AdMob.requestConsentInfo();
       
       if (consentInfo.isConsentFormAvailable && consentInfo.status === AdmobConsentStatus.REQUIRED) {
         await AdMob.showConsentForm();
@@ -82,7 +80,7 @@ export class AdMobService {
     }
 
     try {
-      const options: InterstitialAdOptions = {
+      const options = {
         adId: this.config.interstitialAdUnitId,
         isTesting: this.config.testMode
       };
@@ -113,7 +111,7 @@ export class AdMobService {
       const result = await AdMob.showRewardVideoAd();
       
       console.log('Rewarded ad completed:', result);
-      return { shown: true, rewarded: result.rewarded };
+      return { shown: true, rewarded: result.reward !== undefined };
     } catch (error) {
       console.error('Failed to show rewarded ad:', error);
       return { shown: false, rewarded: false };

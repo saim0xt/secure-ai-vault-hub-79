@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Preferences } from '@capacitor/preferences';
 import CryptoJS from 'crypto-js';
@@ -14,6 +13,7 @@ interface AuthContextType {
   biometricEnabled: boolean;
   setBiometricEnabled: (enabled: boolean) => void;
   fakeVaultMode: boolean;
+  setFakeVaultMode: (mode: boolean) => void;
   toggleFakeVault: () => void;
   attempts: number;
   resetAttempts: () => void;
@@ -180,6 +180,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const setFakeVaultMode = (mode: boolean) => {
+    setFakeVaultMode(mode);
+  };
+
   const toggleFakeVault = () => {
     setFakeVaultMode(!fakeVaultMode);
   };
@@ -210,6 +214,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       biometricEnabled,
       setBiometricEnabled: handleBiometricToggle,
       fakeVaultMode,
+      setFakeVaultMode,
       toggleFakeVault,
       attempts,
       resetAttempts,
