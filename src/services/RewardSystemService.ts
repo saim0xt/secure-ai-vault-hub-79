@@ -218,7 +218,7 @@ export class RewardSystemService {
       }
       
       // Show interstitial ad
-      await this.adMobService.showInterstitialAd();
+      await this.adMobService.showInterstitial();
       
       // Generate random prize
       const randomIndex = Math.floor(Math.random() * this.spinWheelPrizes.length);

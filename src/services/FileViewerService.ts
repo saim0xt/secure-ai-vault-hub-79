@@ -1,12 +1,31 @@
+
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { FileOpener } from '@capacitor-community/file-opener';
 import { Share } from '@capacitor/share';
+import { Capacitor } from '@capacitor/core';
 import CryptoJS from 'crypto-js';
 
 interface ViewerConfig {
   enableThumbnails: boolean;
   maxPreviewSize: number;
   supportedFormats: string[];
+}
+
+export interface FilePreview {
+  type: 'image' | 'video' | 'audio' | 'text' | 'pdf' | 'unsupported';
+  preview: string | null;
+  metadata: any;
+  canEdit: boolean;
+}
+
+export interface FileMetadata {
+  size: number;
+  mimeType: string;
+  dimensions?: { width: number; height: number };
+  duration?: number;
+  encoding?: string;
+  lines?: number;
+  pages?: number;
 }
 
 export class FileViewerService {

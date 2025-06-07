@@ -1,4 +1,3 @@
-
 import CryptoJS from 'crypto-js';
 
 export interface DuplicateGroup {
@@ -268,7 +267,7 @@ export class DuplicateDetectionService {
   }
 
   async generateDuplicateReport(files: any[]): Promise<DuplicateAnalysis> {
-    const duplicateGroups = await this.findDuplicates(files);
+    const duplicateGroups = await DuplicateDetectionService.findDuplicates(files);
     const totalDuplicates = duplicateGroups.reduce((sum, group) => sum + group.files.length - 1, 0);
     const potentialSavings = duplicateGroups.reduce((sum, group) => sum + group.potentialSavings, 0);
     

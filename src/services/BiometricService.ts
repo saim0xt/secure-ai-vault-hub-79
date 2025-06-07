@@ -78,8 +78,7 @@ export class BiometricService {
         iosFallbackTitle: 'Use Passcode',
         androidTitle: 'Vaultix Authentication',
         androidSubtitle: 'Use your biometric to unlock vault',
-        androidConfirmationRequired: config.requireConfirmation,
-        androidMaxAttempts: 3
+        androidConfirmationRequired: config.requireConfirmation
       };
 
       await BiometricAuth.authenticate(options);
@@ -115,8 +114,7 @@ export class BiometricService {
         iosFallbackTitle: 'Use Passcode',
         androidTitle: title,
         androidSubtitle: subtitle,
-        androidConfirmationRequired: config.requireConfirmation,
-        androidMaxAttempts: 5
+        androidConfirmationRequired: config.requireConfirmation
       };
 
       await BiometricAuth.authenticate(options);
