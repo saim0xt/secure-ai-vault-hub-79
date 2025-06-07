@@ -1,3 +1,4 @@
+
 import { BiometricAuth, BiometryType, CheckBiometryResult, AuthenticateOptions } from '@aparajita/capacitor-biometric-auth';
 import { Preferences } from '@capacitor/preferences';
 
@@ -49,8 +50,9 @@ export class BiometricService {
         androidConfirmationRequired: false
       };
 
-      const result = await BiometricAuth.authenticate(options);
-      return result.isAuthenticated;
+      await BiometricAuth.authenticate(options);
+      // If authenticate() doesn't throw, it means authentication was successful
+      return true;
     } catch (error) {
       console.error('Biometric authentication failed:', error);
       return false;
