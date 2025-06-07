@@ -1,102 +1,370 @@
 
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
-import { VaultFile } from '@/contexts/VaultContext';
+import { FileOpener } from '@capacitor-community/file-opener';
+import { Capacitor } from '@capacitor/core';
+import { Share } from '@capacitor/share';
 import CryptoJS from 'crypto-js';
 
-export interface ViewableFile {
-  id: string;
-  name: string;
-  type: string;
-  data: string;
+export interface FilePreview {
+  type: 'image' | 'video' | 'audio' | 'text' | 'pdf' | 'unsupported';
+  preview: string | null;
+  metadata: Record<string, any>;
+  canEdit: boolean;
+}
+
+export interface FileMetadata {
+  size: number;
   mimeType: string;
+  dimensions?: { width: number; height: number };
+  duration?: number;
+  pages?: number;
+  encoding?: string;
 }
 
 export class FileViewerService {
-  private static readonly ENCRYPTION_KEY = 'vaultix_file_key';
+  private static instance: FileViewerService;
 
-  static async decryptFileData(encryptedData: string): Promise<string> {
+  static getInstance(): FileViewerService {
+    if (!FileViewerService.instance) {
+      FileViewerService.instance = new FileViewerService();
+    }
+    return FileViewerService.instance;
+  }
+
+  async generatePreview(file: any): Promise<FilePreview> {
     try {
-      const bytes = CryptoJS.AES.decrypt(encryptedData, this.ENCRYPTION_KEY);
-      return bytes.toString(CryptoJS.enc.Utf8);
+      const decryptedData = this.decryptFileData(file.encryptedData);
+      const blob = this.dataUrlToBlob(decryptedData);
+      
+      switch (file.type) {
+        case 'image':
+          return await this.generateImagePreview(decryptedData, blob);
+        case 'video':
+          return await this.generateVideoPreview(blob);
+        case 'audio':
+          return await this.generateAudioPreview(blob);
+        case 'document':
+          return await this.generateDocumentPreview(decryptedData, blob);
+        default:
+          return this.generateUnsupportedPreview();
+      }
     } catch (error) {
-      console.error('Failed to decrypt file data:', error);
-      throw new Error('Failed to decrypt file');
+      console.error('Failed to generate preview:', error);
+      return this.generateUnsupportedPreview();
     }
   }
 
-  static async prepareFileForViewing(file: VaultFile): Promise<ViewableFile> {
-    try {
-      const decryptedData = await this.decryptFileData(file.encryptedData);
-      
-      return {
-        id: file.id,
-        name: file.name,
-        type: file.type,
-        data: decryptedData,
-        mimeType: this.getMimeType(file.name, file.type)
+  private async generateImagePreview(dataUrl: string, blob: Blob): Promise<FilePreview> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        // Create thumbnail
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        const maxSize = 300;
+        const ratio = Math.min(maxSize / img.width, maxSize / img.height);
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+        
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        resolve({
+          type: 'image',
+          preview: canvas.toDataURL(),
+          metadata: {
+            dimensions: { width: img.width, height: img.height },
+            size: blob.size,
+            aspectRatio: img.width / img.height
+          },
+          canEdit: true
+        });
       };
-    } catch (error) {
-      console.error('Failed to prepare file for viewing:', error);
-      throw error;
-    }
-  }
-
-  static getMimeType(filename: string, type: string): string {
-    const extension = filename.split('.').pop()?.toLowerCase();
-    
-    switch (extension) {
-      case 'jpg':
-      case 'jpeg':
-        return 'image/jpeg';
-      case 'png':
-        return 'image/png';
-      case 'gif':
-        return 'image/gif';
-      case 'webp':
-        return 'image/webp';
-      case 'mp4':
-        return 'video/mp4';
-      case 'webm':
-        return 'video/webm';
-      case 'mp3':
-        return 'audio/mp3';
-      case 'wav':
-        return 'audio/wav';
-      case 'ogg':
-        return 'audio/ogg';
-      case 'pdf':
-        return 'application/pdf';
-      case 'txt':
-        return 'text/plain';
-      case 'doc':
-      case 'docx':
-        return 'application/msword';
-      default:
-        return 'application/octet-stream';
-    }
-  }
-
-  static canViewInApp(file: VaultFile): boolean {
-    const viewableTypes = ['image', 'video', 'audio', 'document'];
-    return viewableTypes.includes(file.type);
-  }
-
-  static async exportFile(file: VaultFile, targetPath?: string): Promise<string> {
-    try {
-      const decryptedData = await this.decryptFileData(file.encryptedData);
-      const fileName = targetPath || `vaultix_export_${file.name}`;
       
-      await Filesystem.writeFile({
-        path: fileName,
-        data: decryptedData,
-        directory: Directory.Documents,
-        encoding: file.type === 'image' || file.type === 'video' ? undefined : Encoding.UTF8
-      });
+      img.onerror = () => resolve(this.generateUnsupportedPreview());
+      img.src = dataUrl;
+    });
+  }
 
-      return fileName;
+  private async generateVideoPreview(blob: Blob): Promise<FilePreview> {
+    return new Promise((resolve) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      
+      video.onloadedmetadata = () => {
+        // Create video thumbnail
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = 300;
+        canvas.height = (video.videoHeight / video.videoWidth) * 300;
+        
+        video.currentTime = Math.min(video.duration * 0.1, 5); // 10% in or 5 seconds
+        
+        video.onseeked = () => {
+          ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          resolve({
+            type: 'video',
+            preview: canvas.toDataURL(),
+            metadata: {
+              dimensions: { width: video.videoWidth, height: video.videoHeight },
+              duration: video.duration,
+              size: blob.size
+            },
+            canEdit: false
+          });
+        };
+      };
+      
+      video.onerror = () => resolve(this.generateUnsupportedPreview());
+      video.src = URL.createObjectURL(blob);
+    });
+  }
+
+  private async generateAudioPreview(blob: Blob): Promise<FilePreview> {
+    return new Promise((resolve) => {
+      const audio = new Audio();
+      
+      audio.onloadedmetadata = () => {
+        // Generate audio waveform visualization
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = 300;
+        canvas.height = 100;
+        
+        if (ctx) {
+          // Simple waveform visualization
+          ctx.fillStyle = '#4F46E5';
+          const bars = 50;
+          const barWidth = canvas.width / bars;
+          
+          for (let i = 0; i < bars; i++) {
+            const height = Math.random() * canvas.height * 0.8;
+            ctx.fillRect(i * barWidth, canvas.height - height, barWidth - 1, height);
+          }
+        }
+        
+        resolve({
+          type: 'audio',
+          preview: canvas.toDataURL(),
+          metadata: {
+            duration: audio.duration,
+            size: blob.size
+          },
+          canEdit: false
+        });
+      };
+      
+      audio.onerror = () => resolve(this.generateUnsupportedPreview());
+      audio.src = URL.createObjectURL(blob);
+    });
+  }
+
+  private async generateDocumentPreview(dataUrl: string, blob: Blob): Promise<FilePreview> {
+    try {
+      // For text files, extract first few lines
+      if (blob.type.startsWith('text/')) {
+        const text = await blob.text();
+        const preview = text.substring(0, 500);
+        
+        return {
+          type: 'text',
+          preview: preview,
+          metadata: {
+            size: blob.size,
+            encoding: 'UTF-8',
+            lines: text.split('\n').length
+          },
+          canEdit: true
+        };
+      }
+      
+      // For PDFs, would need PDF.js integration
+      if (blob.type === 'application/pdf') {
+        return {
+          type: 'pdf',
+          preview: null,
+          metadata: {
+            size: blob.size,
+            pages: 1 // Would need PDF parsing
+          },
+          canEdit: false
+        };
+      }
+      
+      return this.generateUnsupportedPreview();
+    } catch (error) {
+      return this.generateUnsupportedPreview();
+    }
+  }
+
+  private generateUnsupportedPreview(): FilePreview {
+    return {
+      type: 'unsupported',
+      preview: null,
+      metadata: {},
+      canEdit: false
+    };
+  }
+
+  async openFile(file: any): Promise<void> {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        // Export file to temp directory and open with native app
+        const tempPath = await this.exportToTemp(file);
+        await FileOpener.open({
+          filePath: tempPath,
+          contentType: this.getMimeType(file.type)
+        });
+      } else {
+        // Web: Open in new tab
+        const decryptedData = this.decryptFileData(file.encryptedData);
+        const blob = this.dataUrlToBlob(decryptedData);
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+      }
+    } catch (error) {
+      console.error('Failed to open file:', error);
+      throw new Error('Unable to open file');
+    }
+  }
+
+  async exportFile(file: any): Promise<string> {
+    try {
+      const decryptedData = this.decryptFileData(file.encryptedData);
+      
+      if (Capacitor.isNativePlatform()) {
+        // Save to Downloads directory
+        const fileName = `vaultix_${file.name}`;
+        const path = `Download/${fileName}`;
+        
+        await Filesystem.writeFile({
+          path,
+          data: decryptedData.split(',')[1], // Remove data URL prefix
+          directory: Directory.External
+        });
+        
+        return path;
+      } else {
+        // Web: Trigger download
+        const blob = this.dataUrlToBlob(decryptedData);
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        return url;
+      }
     } catch (error) {
       console.error('Failed to export file:', error);
-      throw error;
+      throw new Error('Failed to export file');
     }
+  }
+
+  private async exportToTemp(file: any): Promise<string> {
+    const decryptedData = this.decryptFileData(file.encryptedData);
+    const fileName = `temp_${Date.now()}_${file.name}`;
+    const path = `cache/${fileName}`;
+    
+    await Filesystem.writeFile({
+      path,
+      data: decryptedData.split(',')[1],
+      directory: Directory.Cache
+    });
+    
+    const fileUri = await Filesystem.getUri({
+      directory: Directory.Cache,
+      path
+    });
+    
+    return fileUri.uri;
+  }
+
+  private decryptFileData(encryptedData: string): string {
+    try {
+      const bytes = CryptoJS.AES.decrypt(encryptedData, 'vaultix_secret_key');
+      return bytes.toString(CryptoJS.enc.Utf8);
+    } catch (error) {
+      throw new Error('Failed to decrypt file data');
+    }
+  }
+
+  private dataUrlToBlob(dataUrl: string): Blob {
+    const arr = dataUrl.split(',');
+    const mime = arr[0].match(/:(.*?);/)![1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    
+    return new Blob([u8arr], { type: mime });
+  }
+
+  private getMimeType(fileType: string): string {
+    const mimeTypes: Record<string, string> = {
+      'image': 'image/*',
+      'video': 'video/*',
+      'audio': 'audio/*',
+      'document': 'application/pdf',
+      'other': 'application/octet-stream'
+    };
+    
+    return mimeTypes[fileType] || 'application/octet-stream';
+  }
+
+  async getFileMetadata(file: any): Promise<FileMetadata> {
+    try {
+      const decryptedData = this.decryptFileData(file.encryptedData);
+      const blob = this.dataUrlToBlob(decryptedData);
+      
+      const metadata: FileMetadata = {
+        size: blob.size,
+        mimeType: blob.type
+      };
+      
+      // Add type-specific metadata
+      if (file.type === 'image') {
+        const dimensions = await this.getImageDimensions(decryptedData);
+        metadata.dimensions = dimensions;
+      } else if (file.type === 'video' || file.type === 'audio') {
+        const duration = await this.getMediaDuration(blob);
+        metadata.duration = duration;
+      }
+      
+      return metadata;
+    } catch (error) {
+      return {
+        size: file.size || 0,
+        mimeType: 'application/octet-stream'
+      };
+    }
+  }
+
+  private getImageDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.width, height: img.height });
+      img.onerror = () => resolve({ width: 0, height: 0 });
+      img.src = dataUrl;
+    });
+  }
+
+  private getMediaDuration(blob: Blob): Promise<number> {
+    return new Promise((resolve) => {
+      const media = blob.type.startsWith('video/') ? document.createElement('video') : new Audio();
+      media.onloadedmetadata = () => resolve(media.duration || 0);
+      media.onerror = () => resolve(0);
+      media.src = URL.createObjectURL(blob);
+    });
   }
 }

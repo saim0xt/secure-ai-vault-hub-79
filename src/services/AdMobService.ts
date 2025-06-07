@@ -1,22 +1,37 @@
-import { AdMob, BannerAdOptions, BannerAdSize, BannerAdPosition, RewardAdOptions, AdmobConsentStatus, AdmobConsentInfo } from '@capacitor-community/admob';
+
+import { AdMob, BannerAdOptions, BannerAdSize, BannerAdPosition, InterstitialAdOptions, RewardAdOptions, AdMobRewardItem, AdLoadInfo, AdShowInfo } from '@capacitor-community/admob';
 import { Preferences } from '@capacitor/preferences';
 
-export interface AdConfig {
+export interface AdMobConfig {
+  appId: string;
   bannerAdUnitId: string;
   interstitialAdUnitId: string;
   rewardedAdUnitId: string;
-  testMode: boolean;
+  testDeviceIds: string[];
+  enabled: boolean;
+}
+
+export interface AdRevenue {
+  totalRevenue: number;
+  impressions: number;
+  clicks: number;
+  lastUpdated: string;
 }
 
 export class AdMobService {
   private static instance: AdMobService;
-  private config: AdConfig = {
-    bannerAdUnitId: 'ca-app-pub-3940256099942544/6300978111', // Test ID
-    interstitialAdUnitId: 'ca-app-pub-3940256099942544/1033173712', // Test ID
-    rewardedAdUnitId: 'ca-app-pub-3940256099942544/5224354917', // Test ID
-    testMode: true
+  private config: AdMobConfig = {
+    appId: '',
+    bannerAdUnitId: '',
+    interstitialAdUnitId: '',
+    rewardedAdUnitId: '',
+    testDeviceIds: [],
+    enabled: false
   };
   private isInitialized = false;
+  private bannerVisible = false;
+  private interstitialLoaded = false;
+  private rewardedLoaded = false;
 
   static getInstance(): AdMobService {
     if (!AdMobService.instance) {
@@ -27,16 +42,22 @@ export class AdMobService {
 
   async initialize(): Promise<void> {
     try {
+      await this.loadConfig();
+      
+      if (!this.config.enabled || !this.config.appId) {
+        console.log('AdMob not configured or disabled');
+        return;
+      }
+
       await AdMob.initialize({
-        testingDevices: ['your-test-device-id'],
-        initializeForTesting: this.config.testMode,
+        requestTrackingAuthorization: true,
+        testingDevices: this.config.testDeviceIds,
+        initializeForTesting: this.config.testDeviceIds.length > 0
       });
 
-      const consentInfo = await AdMob.requestConsentInfo();
-      
-      if (consentInfo.isConsentFormAvailable && consentInfo.status === AdmobConsentStatus.REQUIRED) {
-        await AdMob.showConsentForm();
-      }
+      // Pre-load ads
+      await this.preloadInterstitial();
+      await this.preloadRewarded();
 
       this.isInitialized = true;
       console.log('AdMob initialized successfully');
@@ -45,50 +66,74 @@ export class AdMobService {
     }
   }
 
-  async showBannerAd(): Promise<void> {
-    if (!this.isInitialized) {
-      await this.initialize();
+  async loadConfig(): Promise<void> {
+    try {
+      const { value } = await Preferences.get({ key: 'vaultix_admob_config' });
+      if (value) {
+        this.config = { ...this.config, ...JSON.parse(value) };
+      }
+    } catch (error) {
+      console.error('Failed to load AdMob config:', error);
     }
+  }
+
+  async saveConfig(config: Partial<AdMobConfig>): Promise<void> {
+    this.config = { ...this.config, ...config };
+    try {
+      await Preferences.set({
+        key: 'vaultix_admob_config',
+        value: JSON.stringify(this.config)
+      });
+    } catch (error) {
+      console.error('Failed to save AdMob config:', error);
+    }
+  }
+
+  async showBanner(position: BannerAdPosition = BannerAdPosition.BOTTOM_CENTER): Promise<void> {
+    if (!this.isInitialized || !this.config.bannerAdUnitId) return;
 
     try {
       const options: BannerAdOptions = {
         adId: this.config.bannerAdUnitId,
         adSize: BannerAdSize.BANNER,
-        position: BannerAdPosition.BOTTOM_CENTER,
+        position,
         margin: 0,
-        isTesting: this.config.testMode
+        isTesting: this.config.testDeviceIds.length > 0
       };
 
       await AdMob.showBanner(options);
-      console.log('Banner ad shown');
+      this.bannerVisible = true;
+      await this.trackImpression('banner');
     } catch (error) {
       console.error('Failed to show banner ad:', error);
     }
   }
 
-  async hideBannerAd(): Promise<void> {
+  async hideBanner(): Promise<void> {
+    if (!this.bannerVisible) return;
+
     try {
       await AdMob.hideBanner();
+      this.bannerVisible = false;
     } catch (error) {
       console.error('Failed to hide banner ad:', error);
     }
   }
 
-  async showInterstitialAd(): Promise<boolean> {
-    if (!this.isInitialized) {
-      await this.initialize();
+  async showInterstitial(): Promise<boolean> {
+    if (!this.isInitialized || !this.interstitialLoaded) {
+      await this.preloadInterstitial();
+      if (!this.interstitialLoaded) return false;
     }
 
     try {
-      const options = {
-        adId: this.config.interstitialAdUnitId,
-        isTesting: this.config.testMode
-      };
-
-      await AdMob.prepareInterstitial(options);
-      await AdMob.showInterstitial();
+      const result = await AdMob.showInterstitial();
+      this.interstitialLoaded = false;
+      await this.trackImpression('interstitial');
       
-      console.log('Interstitial ad shown');
+      // Pre-load next ad
+      setTimeout(() => this.preloadInterstitial(), 1000);
+      
       return true;
     } catch (error) {
       console.error('Failed to show interstitial ad:', error);
@@ -96,45 +141,119 @@ export class AdMobService {
     }
   }
 
-  async showRewardedAd(): Promise<{ shown: boolean; rewarded: boolean }> {
-    if (!this.isInitialized) {
-      await this.initialize();
+  async showRewardedAd(): Promise<{ rewarded: boolean; reward?: AdMobRewardItem }> {
+    if (!this.isInitialized || !this.rewardedLoaded) {
+      await this.preloadRewarded();
+      if (!this.rewardedLoaded) return { rewarded: false };
     }
+
+    try {
+      const result = await AdMob.showRewardVideoAd();
+      this.rewardedLoaded = false;
+      await this.trackImpression('rewarded');
+      
+      // Pre-load next ad
+      setTimeout(() => this.preloadRewarded(), 1000);
+      
+      return { 
+        rewarded: true, 
+        reward: result.reward 
+      };
+    } catch (error) {
+      console.error('Failed to show rewarded ad:', error);
+      return { rewarded: false };
+    }
+  }
+
+  private async preloadInterstitial(): Promise<void> {
+    if (!this.config.interstitialAdUnitId) return;
+
+    try {
+      const options: InterstitialAdOptions = {
+        adId: this.config.interstitialAdUnitId,
+        isTesting: this.config.testDeviceIds.length > 0
+      };
+
+      await AdMob.prepareInterstitial(options);
+      this.interstitialLoaded = true;
+    } catch (error) {
+      console.error('Failed to preload interstitial ad:', error);
+      this.interstitialLoaded = false;
+    }
+  }
+
+  private async preloadRewarded(): Promise<void> {
+    if (!this.config.rewardedAdUnitId) return;
 
     try {
       const options: RewardAdOptions = {
         adId: this.config.rewardedAdUnitId,
-        isTesting: this.config.testMode
+        isTesting: this.config.testDeviceIds.length > 0
       };
 
       await AdMob.prepareRewardVideoAd(options);
-      const result = await AdMob.showRewardVideoAd();
-      
-      console.log('Rewarded ad completed:', result);
-      // Fix: Access the reward property correctly based on the actual API
-      return { shown: true, rewarded: !!result };
+      this.rewardedLoaded = true;
     } catch (error) {
-      console.error('Failed to show rewarded ad:', error);
-      return { shown: false, rewarded: false };
+      console.error('Failed to preload rewarded ad:', error);
+      this.rewardedLoaded = false;
     }
   }
 
-  async updateConfig(newConfig: Partial<AdConfig>): Promise<void> {
-    this.config = { ...this.config, ...newConfig };
-    await Preferences.set({ 
-      key: 'vaultix_ad_config', 
-      value: JSON.stringify(this.config) 
-    });
-  }
-
-  async loadConfig(): Promise<void> {
+  private async trackImpression(adType: 'banner' | 'interstitial' | 'rewarded'): Promise<void> {
     try {
-      const { value } = await Preferences.get({ key: 'vaultix_ad_config' });
-      if (value) {
-        this.config = { ...this.config, ...JSON.parse(value) };
-      }
+      const { value } = await Preferences.get({ key: 'vaultix_ad_revenue' });
+      const revenue: AdRevenue = value ? JSON.parse(value) : {
+        totalRevenue: 0,
+        impressions: 0,
+        clicks: 0,
+        lastUpdated: new Date().toISOString()
+      };
+
+      revenue.impressions += 1;
+      
+      // Estimate revenue based on ad type
+      const estimatedRevenue = {
+        banner: 0.001,
+        interstitial: 0.01,
+        rewarded: 0.05
+      };
+      
+      revenue.totalRevenue += estimatedRevenue[adType];
+      revenue.lastUpdated = new Date().toISOString();
+
+      await Preferences.set({
+        key: 'vaultix_ad_revenue',
+        value: JSON.stringify(revenue)
+      });
     } catch (error) {
-      console.error('Failed to load ad config:', error);
+      console.error('Failed to track ad impression:', error);
     }
+  }
+
+  async getRevenue(): Promise<AdRevenue> {
+    try {
+      const { value } = await Preferences.get({ key: 'vaultix_ad_revenue' });
+      return value ? JSON.parse(value) : {
+        totalRevenue: 0,
+        impressions: 0,
+        clicks: 0,
+        lastUpdated: new Date().toISOString()
+      };
+    } catch (error) {
+      return {
+        totalRevenue: 0,
+        impressions: 0,
+        clicks: 0,
+        lastUpdated: new Date().toISOString()
+      };
+    }
+  }
+
+  isReady(): boolean {
+    return this.isInitialized && this.config.enabled;
+  }
+
+  getConfig(): AdMobConfig {
+    return { ...this.config };
   }
 }

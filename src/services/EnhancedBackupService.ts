@@ -1,31 +1,43 @@
+
 import { Preferences } from '@capacitor/preferences';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { Zip } from '@capacitor/zip';
+import CryptoJS from 'crypto-js';
 import { GoogleDriveService } from './GoogleDriveService';
-import { FileEncryption } from '@/utils/encryption';
 
 export interface BackupMetadata {
   id: string;
   timestamp: string;
-  version: string;
   fileCount: number;
   totalSize: number;
-  type: 'local' | 'cloud' | 'manual';
+  type: 'full' | 'incremental' | 'cloud';
   encrypted: boolean;
+  version: string;
   checksum: string;
 }
 
 export interface RestoreProgress {
-  stage: 'preparing' | 'downloading' | 'decrypting' | 'restoring' | 'complete';
+  stage: 'preparing' | 'extracting' | 'decrypting' | 'restoring' | 'finalizing';
   progress: number;
   currentFile?: string;
-  error?: string;
+  totalFiles?: number;
+  processedFiles?: number;
+}
+
+export interface BackupSchedule {
+  enabled: boolean;
+  frequency: 'daily' | 'weekly' | 'monthly';
+  time: string;
+  includeSettings: boolean;
+  cloudSync: boolean;
+  maxBackups: number;
 }
 
 export class EnhancedBackupService {
   private static instance: EnhancedBackupService;
-  private googleDrive: GoogleDriveService;
-  
+  private googleDriveService = GoogleDriveService.getInstance();
+
   static getInstance(): EnhancedBackupService {
     if (!EnhancedBackupService.instance) {
       EnhancedBackupService.instance = new EnhancedBackupService();
@@ -33,145 +45,179 @@ export class EnhancedBackupService {
     return EnhancedBackupService.instance;
   }
 
-  constructor() {
-    this.googleDrive = GoogleDriveService.getInstance();
-  }
-
   async createFullBackup(password: string, includeSettings: boolean = true): Promise<BackupMetadata> {
     try {
-      // Gather all vault data
-      const vaultData = await this.gatherVaultData(includeSettings);
+      const backupId = `backup_${Date.now()}`;
+      const timestamp = new Date().toISOString();
       
-      // Create backup metadata
-      const metadata: BackupMetadata = {
-        id: this.generateBackupId(),
-        timestamp: new Date().toISOString(),
-        version: '2.0.0',
-        fileCount: vaultData.files.length,
-        totalSize: this.calculateTotalSize(vaultData),
-        type: 'manual',
-        encrypted: true,
-        checksum: ''
-      };
-
-      // Encrypt backup data
-      const encryptedData = await this.encryptBackupData(vaultData, password);
-      metadata.checksum = await this.calculateChecksum(encryptedData);
-
-      // Save to local storage
-      const fileName = `vaultix_backup_${metadata.id}.vbk`;
+      // Get all vault data
+      const vaultData = await this.collectVaultData(includeSettings);
+      const jsonData = JSON.stringify(vaultData);
+      
+      // Encrypt data
+      const encryptedData = this.encryptData(jsonData, password);
+      
+      // Create backup file
+      const backupFileName = `${backupId}.vbak`;
       await Filesystem.writeFile({
-        path: fileName,
+        path: `backups/${backupFileName}`,
         data: encryptedData,
         directory: Directory.Documents,
         encoding: Encoding.UTF8
       });
 
-      // Update backup history
-      await this.updateBackupHistory(metadata);
+      // Calculate checksum
+      const checksum = CryptoJS.SHA256(encryptedData).toString();
+      
+      const metadata: BackupMetadata = {
+        id: backupId,
+        timestamp,
+        fileCount: vaultData.files?.length || 0,
+        totalSize: new Blob([encryptedData]).size,
+        type: 'full',
+        encrypted: true,
+        version: '1.0',
+        checksum
+      };
 
+      await this.saveBackupMetadata(metadata);
+      
+      // Cleanup old backups
+      await this.cleanupOldBackups();
+      
       return metadata;
     } catch (error) {
-      console.error('Full backup creation failed:', error);
+      console.error('Backup creation failed:', error);
       throw new Error('Failed to create backup');
     }
   }
 
   async createCloudBackup(password: string): Promise<BackupMetadata> {
     try {
-      // Create local backup first
-      const metadata = await this.createFullBackup(password);
+      const metadata = await this.createFullBackup(password, true);
       
       // Upload to Google Drive
-      const fileName = `vaultix_backup_${metadata.id}.vbk`;
+      const backupFileName = `${metadata.id}.vbak`;
+      const backupPath = `backups/${backupFileName}`;
+      
       const fileData = await Filesystem.readFile({
-        path: fileName,
+        path: backupPath,
         directory: Directory.Documents,
         encoding: Encoding.UTF8
       });
 
-      await this.googleDrive.uploadFile(fileName, fileData.data as string);
-      
-      // Update metadata
-      metadata.type = 'cloud';
-      await this.updateBackupHistory(metadata);
+      await this.googleDriveService.uploadFile(
+        backupFileName,
+        fileData.data as string,
+        'application/octet-stream'
+      );
 
+      metadata.type = 'cloud';
+      await this.saveBackupMetadata(metadata);
+      
       return metadata;
     } catch (error) {
-      console.error('Cloud backup creation failed:', error);
+      console.error('Cloud backup failed:', error);
       throw new Error('Failed to create cloud backup');
     }
   }
 
-  async restoreBackup(
-    backupId: string, 
-    password: string, 
-    onProgress?: (progress: RestoreProgress) => void
-  ): Promise<void> {
+  async restoreBackup(backupId: string, password: string, progressCallback?: (progress: RestoreProgress) => void): Promise<void> {
     try {
-      onProgress?.({ stage: 'preparing', progress: 0 });
-
-      // Get backup metadata
-      const metadata = await this.getBackupMetadata(backupId);
-      if (!metadata) {
-        throw new Error('Backup not found');
-      }
-
-      onProgress?.({ stage: 'downloading', progress: 20 });
-
-      // Read backup file
-      const fileName = `vaultix_backup_${backupId}.vbk`;
-      let fileData: string;
-
-      if (metadata.type === 'cloud') {
-        // Download from cloud
-        const files = await this.googleDrive.listFiles();
-        const backupFile = files.find(f => f.name === fileName);
-        if (!backupFile) {
-          throw new Error('Cloud backup file not found');
-        }
-        fileData = await this.googleDrive.downloadFile(backupFile.id);
-      } else {
-        // Read from local storage
-        const result = await Filesystem.readFile({
-          path: fileName,
+      progressCallback?.({ stage: 'preparing', progress: 10 });
+      
+      // Load backup file
+      const backupFileName = `${backupId}.vbak`;
+      const backupPath = `backups/${backupFileName}`;
+      
+      let encryptedData: string;
+      try {
+        const fileData = await Filesystem.readFile({
+          path: backupPath,
           directory: Directory.Documents,
           encoding: Encoding.UTF8
         });
-        fileData = result.data as string;
+        encryptedData = fileData.data as string;
+      } catch (error) {
+        // Try cloud backup
+        encryptedData = await this.googleDriveService.downloadFile(backupId);
       }
 
-      onProgress?.({ stage: 'decrypting', progress: 50 });
-
-      // Decrypt backup data
-      const decryptedData = await this.decryptBackupData(fileData, password);
+      progressCallback?.({ stage: 'decrypting', progress: 30 });
       
-      // Verify checksum
-      const calculatedChecksum = await this.calculateChecksum(fileData);
-      if (calculatedChecksum !== metadata.checksum) {
-        throw new Error('Backup file integrity check failed');
-      }
-
-      onProgress?.({ stage: 'restoring', progress: 75 });
-
+      // Decrypt data
+      const decryptedData = this.decryptData(encryptedData, password);
+      const vaultData = JSON.parse(decryptedData);
+      
+      progressCallback?.({ stage: 'restoring', progress: 50 });
+      
       // Restore vault data
-      await this.restoreVaultData(decryptedData, onProgress);
-
-      onProgress?.({ stage: 'complete', progress: 100 });
+      await this.restoreVaultData(vaultData, progressCallback);
+      
+      progressCallback?.({ stage: 'finalizing', progress: 100 });
+      
     } catch (error) {
-      console.error('Backup restoration failed:', error);
-      onProgress?.({ 
-        stage: 'complete', 
-        progress: 0, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      console.error('Restore failed:', error);
+      throw new Error('Failed to restore backup');
+    }
+  }
+
+  async scheduleAutomaticBackups(schedule: BackupSchedule): Promise<void> {
+    try {
+      await Preferences.set({
+        key: 'vaultix_backup_schedule',
+        value: JSON.stringify(schedule)
       });
-      throw error;
+
+      if (schedule.enabled) {
+        // Calculate next backup time
+        const nextBackup = this.calculateNextBackupTime(schedule);
+        await Preferences.set({
+          key: 'vaultix_next_backup',
+          value: nextBackup.toISOString()
+        });
+      }
+    } catch (error) {
+      console.error('Failed to schedule automatic backups:', error);
+    }
+  }
+
+  async checkAndPerformScheduledBackup(): Promise<void> {
+    try {
+      const scheduleData = await Preferences.get({ key: 'vaultix_backup_schedule' });
+      const nextBackupData = await Preferences.get({ key: 'vaultix_next_backup' });
+      
+      if (!scheduleData.value || !nextBackupData.value) return;
+      
+      const schedule: BackupSchedule = JSON.parse(scheduleData.value);
+      const nextBackup = new Date(nextBackupData.value);
+      
+      if (!schedule.enabled || new Date() < nextBackup) return;
+      
+      // Perform backup with a default password (would be user's vault password)
+      const defaultPassword = await this.getVaultPassword();
+      if (defaultPassword) {
+        if (schedule.cloudSync) {
+          await this.createCloudBackup(defaultPassword);
+        } else {
+          await this.createFullBackup(defaultPassword, schedule.includeSettings);
+        }
+        
+        // Schedule next backup
+        const nextTime = this.calculateNextBackupTime(schedule);
+        await Preferences.set({
+          key: 'vaultix_next_backup',
+          value: nextTime.toISOString()
+        });
+      }
+    } catch (error) {
+      console.error('Scheduled backup failed:', error);
     }
   }
 
   async getBackupHistory(): Promise<BackupMetadata[]> {
     try {
-      const { value } = await Preferences.get({ key: 'vaultix_backup_history_v2' });
+      const { value } = await Preferences.get({ key: 'vaultix_backup_history' });
       return value ? JSON.parse(value) : [];
     } catch (error) {
       console.error('Failed to get backup history:', error);
@@ -181,146 +227,158 @@ export class EnhancedBackupService {
 
   async deleteBackup(backupId: string): Promise<void> {
     try {
-      const fileName = `vaultix_backup_${backupId}.vbk`;
-      
-      // Delete local file
-      try {
-        await Filesystem.deleteFile({
-          path: fileName,
-          directory: Directory.Documents
-        });
-      } catch (error) {
-        console.log('Local backup file not found');
-      }
-
-      // Delete from cloud if exists
-      try {
-        const files = await this.googleDrive.listFiles();
-        const backupFile = files.find(f => f.name === fileName);
-        if (backupFile) {
-          await this.googleDrive.deleteFile(backupFile.id);
-        }
-      } catch (error) {
-        console.log('Cloud backup file not found');
-      }
+      // Delete local backup file
+      const backupFileName = `${backupId}.vbak`;
+      await Filesystem.deleteFile({
+        path: `backups/${backupFileName}`,
+        directory: Directory.Documents
+      });
 
       // Remove from history
       const history = await this.getBackupHistory();
       const updatedHistory = history.filter(b => b.id !== backupId);
       await Preferences.set({
-        key: 'vaultix_backup_history_v2',
+        key: 'vaultix_backup_history',
         value: JSON.stringify(updatedHistory)
       });
     } catch (error) {
       console.error('Failed to delete backup:', error);
-      throw new Error('Failed to delete backup');
     }
   }
 
-  async exportBackup(backupId: string): Promise<void> {
-    try {
-      const fileName = `vaultix_backup_${backupId}.vbk`;
-      
-      await Share.share({
-        title: 'Export Vaultix Backup',
-        text: 'Encrypted Vaultix backup file',
-        files: [fileName]
-      });
-    } catch (error) {
-      console.error('Failed to export backup:', error);
-      throw new Error('Failed to export backup');
-    }
-  }
-
-  private async gatherVaultData(includeSettings: boolean): Promise<any> {
-    const [filesResult, foldersResult, settingsResult] = await Promise.all([
-      Preferences.get({ key: 'vaultix_files' }),
-      Preferences.get({ key: 'vaultix_folders' }),
-      includeSettings ? Preferences.get({ key: 'vaultix_settings' }) : { value: null }
-    ]);
-
-    return {
-      files: filesResult.value ? JSON.parse(filesResult.value) : [],
-      folders: foldersResult.value ? JSON.parse(foldersResult.value) : [],
-      settings: settingsResult.value ? JSON.parse(settingsResult.value) : {},
-      metadata: {
-        exportDate: new Date().toISOString(),
-        appVersion: '2.0.0',
-        platform: 'android'
-      }
-    };
-  }
-
-  private calculateTotalSize(vaultData: any): number {
-    return vaultData.files.reduce((total: number, file: any) => total + (file.size || 0), 0);
-  }
-
-  private async encryptBackupData(data: any, password: string): Promise<string> {
-    const jsonData = JSON.stringify(data);
-    return FileEncryption.encryptFile(jsonData, password);
-  }
-
-  private async decryptBackupData(encryptedData: string, password: string): Promise<any> {
-    const decryptedJson = FileEncryption.decryptFile(encryptedData, password);
-    return JSON.parse(decryptedJson);
-  }
-
-  private async calculateChecksum(data: string): Promise<string> {
-    const encoder = new TextEncoder();
-    const dataBuffer = encoder.encode(data);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  private generateBackupId(): string {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
-  }
-
-  private async getBackupMetadata(backupId: string): Promise<BackupMetadata | null> {
-    const history = await this.getBackupHistory();
-    return history.find(b => b.id === backupId) || null;
-  }
-
-  private async updateBackupHistory(metadata: BackupMetadata): Promise<void> {
-    const history = await this.getBackupHistory();
-    history.push(metadata);
+  private async collectVaultData(includeSettings: boolean): Promise<any> {
+    const data: any = {};
     
-    // Keep only last 20 backups
-    if (history.length > 20) {
-      history.splice(0, history.length - 20);
+    // Get files
+    const filesData = await Preferences.get({ key: 'vaultix_files' });
+    if (filesData.value) {
+      data.files = JSON.parse(filesData.value);
     }
+    
+    // Get folders
+    const foldersData = await Preferences.get({ key: 'vaultix_folders' });
+    if (foldersData.value) {
+      data.folders = JSON.parse(foldersData.value);
+    }
+    
+    if (includeSettings) {
+      // Get all settings
+      const settingsKeys = [
+        'vaultix_security_settings',
+        'vaultix_app_settings',
+        'vaultix_theme_settings',
+        'vaultix_user_coins',
+        'vaultix_premium_features'
+      ];
+      
+      for (const key of settingsKeys) {
+        const settingData = await Preferences.get({ key });
+        if (settingData.value) {
+          data[key] = JSON.parse(settingData.value);
+        }
+      }
+    }
+    
+    return data;
+  }
 
+  private async restoreVaultData(data: any, progressCallback?: (progress: RestoreProgress) => void): Promise<void> {
+    const totalItems = Object.keys(data).length;
+    let processedItems = 0;
+    
+    for (const [key, value] of Object.entries(data)) {
+      if (key === 'files' || key === 'folders' || key.startsWith('vaultix_')) {
+        await Preferences.set({
+          key: key === 'files' ? 'vaultix_files' : key === 'folders' ? 'vaultix_folders' : key,
+          value: JSON.stringify(value)
+        });
+      }
+      
+      processedItems++;
+      const progress = 50 + (processedItems / totalItems) * 40;
+      progressCallback?.({ 
+        stage: 'restoring', 
+        progress, 
+        currentFile: key,
+        totalFiles: totalItems,
+        processedFiles: processedItems
+      });
+    }
+  }
+
+  private encryptData(data: string, password: string): string {
+    return CryptoJS.AES.encrypt(data, password).toString();
+  }
+
+  private decryptData(encryptedData: string, password: string): string {
+    try {
+      const bytes = CryptoJS.AES.decrypt(encryptedData, password);
+      const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+      if (!decrypted) {
+        throw new Error('Invalid password');
+      }
+      return decrypted;
+    } catch (error) {
+      throw new Error('Invalid password or corrupted backup');
+    }
+  }
+
+  private async saveBackupMetadata(metadata: BackupMetadata): Promise<void> {
+    const history = await this.getBackupHistory();
+    history.unshift(metadata);
+    
     await Preferences.set({
-      key: 'vaultix_backup_history_v2',
+      key: 'vaultix_backup_history',
       value: JSON.stringify(history)
     });
   }
 
-  private async restoreVaultData(
-    vaultData: any, 
-    onProgress?: (progress: RestoreProgress) => void
-  ): Promise<void> {
-    const total = vaultData.files.length + vaultData.folders.length + 1;
-    let current = 0;
-
-    // Restore files
-    for (const file of vaultData.files) {
-      onProgress?.({
-        stage: 'restoring',
-        progress: 75 + (current / total) * 20,
-        currentFile: file.name
-      });
-      current++;
+  private async cleanupOldBackups(): Promise<void> {
+    const history = await this.getBackupHistory();
+    const maxBackups = 10; // Keep last 10 backups
+    
+    if (history.length > maxBackups) {
+      const toDelete = history.slice(maxBackups);
+      for (const backup of toDelete) {
+        await this.deleteBackup(backup.id);
+      }
     }
+  }
 
-    // Save data to preferences
-    await Promise.all([
-      Preferences.set({ key: 'vaultix_files', value: JSON.stringify(vaultData.files) }),
-      Preferences.set({ key: 'vaultix_folders', value: JSON.stringify(vaultData.folders) }),
-      vaultData.settings ? 
-        Preferences.set({ key: 'vaultix_settings', value: JSON.stringify(vaultData.settings) }) :
-        Promise.resolve()
-    ]);
+  private calculateNextBackupTime(schedule: BackupSchedule): Date {
+    const now = new Date();
+    const [hours, minutes] = schedule.time.split(':').map(Number);
+    
+    const nextBackup = new Date(now);
+    nextBackup.setHours(hours, minutes, 0, 0);
+    
+    switch (schedule.frequency) {
+      case 'daily':
+        if (nextBackup <= now) {
+          nextBackup.setDate(nextBackup.getDate() + 1);
+        }
+        break;
+      case 'weekly':
+        if (nextBackup <= now) {
+          nextBackup.setDate(nextBackup.getDate() + 7);
+        }
+        break;
+      case 'monthly':
+        if (nextBackup <= now) {
+          nextBackup.setMonth(nextBackup.getMonth() + 1);
+        }
+        break;
+    }
+    
+    return nextBackup;
+  }
+
+  private async getVaultPassword(): Promise<string | null> {
+    try {
+      const { value } = await Preferences.get({ key: 'vaultix_vault_password' });
+      return value;
+    } catch (error) {
+      return null;
+    }
   }
 }
