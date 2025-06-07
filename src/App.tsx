@@ -1,3 +1,4 @@
+
 import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -15,6 +16,9 @@ import VaultDashboard from "./components/vault/VaultDashboard";
 import FileManager from "./components/vault/FileManager";
 import DuplicateManager from "./components/vault/DuplicateManager";
 import Settings from "./components/settings/Settings";
+import BiometricSettings from "./components/settings/BiometricSettings";
+import AdMobSettings from "./components/settings/AdMobSettings";
+import PermissionsManager from "./components/settings/PermissionsManager";
 import BreakInLogs from "./components/security/BreakInLogs";
 import AIFeatures from "./components/ai/AIFeatures";
 import EnhancedAIFeatures from "./components/ai/EnhancedAIFeatures";
@@ -67,9 +71,11 @@ const AppContent = () => {
         const { AdvancedAnalyticsService } = await import('./services/AdvancedAnalyticsService');
         const { TestingSuiteService } = await import('./services/TestingSuiteService');
         const { PermissionsService } = await import('./services/PermissionsService');
+        const { BiometricService } = await import('./services/BiometricService');
         
         // Initialize all services (order matters for dependencies)
         await PermissionsService.getInstance().initialize();
+        await BiometricService.getInstance().checkCapabilities();
         
         await Promise.all([
           AdMobService.getInstance().initialize(),
@@ -119,6 +125,8 @@ const AppContent = () => {
       <Routes>
         <Route path="/auth" element={<AuthScreen />} />
         <Route path="/pattern-lock" element={<PatternLock onPatternComplete={() => {}} onCancel={() => {}} />} />
+        
+        {/* Main App Routes */}
         <Route path="/" element={
           <ProtectedRoute>
             <VaultDashboard />
@@ -144,21 +152,37 @@ const AppContent = () => {
             <RecycleBin />
           </ProtectedRoute>
         } />
-        <Route path="/rewards" element={
-          <ProtectedRoute>
-            <RewardsCenter />
-          </ProtectedRoute>
-        } />
+        
+        {/* Settings Routes */}
         <Route path="/settings" element={
           <ProtectedRoute>
             <Settings />
           </ProtectedRoute>
         } />
+        <Route path="/biometric-settings" element={
+          <ProtectedRoute>
+            <BiometricSettings />
+          </ProtectedRoute>
+        } />
+        <Route path="/admob-settings" element={
+          <ProtectedRoute>
+            <AdMobSettings />
+          </ProtectedRoute>
+        } />
+        <Route path="/permissions" element={
+          <ProtectedRoute>
+            <PermissionsManager />
+          </ProtectedRoute>
+        } />
+        
+        {/* Security Routes */}
         <Route path="/breakin-logs" element={
           <ProtectedRoute>
             <BreakInLogs />
           </ProtectedRoute>
         } />
+        
+        {/* AI Routes */}
         <Route path="/ai-features" element={
           <ProtectedRoute>
             <AIFeatures />
@@ -167,6 +191,13 @@ const AppContent = () => {
         <Route path="/enhanced-ai" element={
           <ProtectedRoute>
             <EnhancedAIFeatures />
+          </ProtectedRoute>
+        } />
+        
+        {/* Feature Routes */}
+        <Route path="/rewards" element={
+          <ProtectedRoute>
+            <RewardsCenter />
           </ProtectedRoute>
         } />
         <Route path="/testing" element={
@@ -189,6 +220,8 @@ const AppContent = () => {
             <VoiceRecorder />
           </ProtectedRoute>
         } />
+        
+        {/* Fallback */}
         <Route path="*" element={<Navigate to="/auth" replace />} />
       </Routes>
     </BrowserRouter>

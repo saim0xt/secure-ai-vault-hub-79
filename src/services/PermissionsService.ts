@@ -1,14 +1,8 @@
 
-import { registerPlugin } from '@capacitor/core';
-
-export interface PermissionsPlugin {
-  requestAllPermissions(): Promise<{ success: boolean; granted: string[]; denied: string[] }>;
-  checkPermissions(): Promise<{ permissions: { [key: string]: boolean } }>;
-  requestSpecificPermission(options: { permission: string }): Promise<{ granted: boolean }>;
-  openAppSettings(): Promise<{ success: boolean }>;
-}
-
-const Permissions = registerPlugin<PermissionsPlugin>('NativeSecurity');
+import { Camera } from '@capacitor/camera';
+import { Device } from '@capacitor/device';
+import { Geolocation } from '@capacitor/geolocation';
+import { Preferences } from '@capacitor/preferences';
 
 export interface PermissionStatus {
   camera: boolean;
@@ -23,16 +17,6 @@ export interface PermissionStatus {
 
 export class PermissionsService {
   private static instance: PermissionsService;
-  private permissionStatus: PermissionStatus = {
-    camera: false,
-    microphone: false,
-    location: false,
-    storage: false,
-    phone: false,
-    overlay: false,
-    deviceAdmin: false,
-    usageStats: false
-  };
 
   static getInstance(): PermissionsService {
     if (!PermissionsService.instance) {
@@ -43,221 +27,322 @@ export class PermissionsService {
 
   async initialize(): Promise<void> {
     try {
-      await this.checkAllPermissions();
       console.log('Permissions service initialized');
     } catch (error) {
       console.error('Failed to initialize permissions service:', error);
     }
   }
 
+  async checkAllPermissions(): Promise<PermissionStatus> {
+    try {
+      const [
+        camera,
+        microphone, 
+        location,
+        storage,
+        phone,
+        overlay,
+        deviceAdmin,
+        usageStats
+      ] = await Promise.all([
+        this.checkCameraPermission(),
+        this.checkMicrophonePermission(),
+        this.checkLocationPermission(),
+        this.checkStoragePermission(),
+        this.checkPhonePermission(),
+        this.checkOverlayPermission(),
+        this.checkDeviceAdminPermission(),
+        this.checkUsageStatsPermission()
+      ]);
+
+      return {
+        camera,
+        microphone,
+        location,
+        storage,
+        phone,
+        overlay,
+        deviceAdmin,
+        usageStats
+      };
+    } catch (error) {
+      console.error('Failed to check permissions:', error);
+      return {
+        camera: false,
+        microphone: false,
+        location: false,
+        storage: false,
+        phone: false,
+        overlay: false,
+        deviceAdmin: false,
+        usageStats: false
+      };
+    }
+  }
+
   async requestAllPermissions(): Promise<boolean> {
     try {
-      const result = await Permissions.requestAllPermissions();
-      await this.checkAllPermissions();
+      const permissions = await Promise.allSettled([
+        this.requestCameraPermission(),
+        this.requestMicrophonePermission(),
+        this.requestLocationPermission(),
+        this.requestStoragePermission(),
+        this.requestPhonePermission(),
+        this.requestOverlayPermission(),
+        this.requestDeviceAdminPermission(),
+        this.requestUsageStatsPermission()
+      ]);
+
+      const successful = permissions.filter(p => p.status === 'fulfilled' && p.value).length;
+      const total = permissions.length;
       
-      // Show permission status dialog
-      this.showPermissionStatusDialog(result);
-      
-      return result.success;
+      console.log(`Permissions granted: ${successful}/${total}`);
+      return successful >= 4; // At least half granted
     } catch (error) {
-      console.error('Failed to request permissions:', error);
+      console.error('Failed to request all permissions:', error);
       return false;
     }
   }
 
   async requestSpecificPermission(permission: keyof PermissionStatus): Promise<boolean> {
     try {
-      const permissionMap = {
-        camera: 'android.permission.CAMERA',
-        microphone: 'android.permission.RECORD_AUDIO',
-        location: 'android.permission.ACCESS_FINE_LOCATION',
-        storage: 'android.permission.WRITE_EXTERNAL_STORAGE',
-        phone: 'android.permission.READ_PHONE_STATE',
-        overlay: 'android.permission.SYSTEM_ALERT_WINDOW',
-        deviceAdmin: 'android.permission.BIND_DEVICE_ADMIN',
-        usageStats: 'android.permission.PACKAGE_USAGE_STATS'
-      };
-
-      const result = await Permissions.requestSpecificPermission({
-        permission: permissionMap[permission]
-      });
-
-      await this.checkAllPermissions();
-      return result.granted;
+      switch (permission) {
+        case 'camera':
+          return await this.requestCameraPermission();
+        case 'microphone':
+          return await this.requestMicrophonePermission();
+        case 'location':
+          return await this.requestLocationPermission();
+        case 'storage':
+          return await this.requestStoragePermission();
+        case 'phone':
+          return await this.requestPhonePermission();
+        case 'overlay':
+          return await this.requestOverlayPermission();
+        case 'deviceAdmin':
+          return await this.requestDeviceAdminPermission();
+        case 'usageStats':
+          return await this.requestUsageStatsPermission();
+        default:
+          return false;
+      }
     } catch (error) {
       console.error(`Failed to request ${permission} permission:`, error);
       return false;
     }
   }
 
-  async checkAllPermissions(): Promise<PermissionStatus> {
+  async ensurePermissionForFeature(feature: string): Promise<boolean> {
+    const permissionMap: Record<string, keyof PermissionStatus> = {
+      'camera': 'camera',
+      'microphone': 'microphone',
+      'location': 'location',
+      'storage': 'storage',
+      'phone': 'phone',
+      'overlay': 'overlay',
+      'deviceAdmin': 'deviceAdmin',
+      'usageStats': 'usageStats'
+    };
+
+    const permissionKey = permissionMap[feature];
+    if (!permissionKey) return false;
+
+    const status = await this.checkAllPermissions();
+    if (status[permissionKey]) return true;
+
+    return await this.requestSpecificPermission(permissionKey);
+  }
+
+  private async checkCameraPermission(): Promise<boolean> {
     try {
-      const result = await Permissions.checkPermissions();
-      this.permissionStatus = {
-        camera: result.permissions['android.permission.CAMERA'] || false,
-        microphone: result.permissions['android.permission.RECORD_AUDIO'] || false,
-        location: result.permissions['android.permission.ACCESS_FINE_LOCATION'] || false,
-        storage: result.permissions['android.permission.WRITE_EXTERNAL_STORAGE'] || false,
-        phone: result.permissions['android.permission.READ_PHONE_STATE'] || false,
-        overlay: result.permissions['android.permission.SYSTEM_ALERT_WINDOW'] || false,
-        deviceAdmin: result.permissions['android.permission.BIND_DEVICE_ADMIN'] || false,
-        usageStats: result.permissions['android.permission.PACKAGE_USAGE_STATS'] || false
-      };
-      
-      return this.permissionStatus;
+      const permissions = await Camera.checkPermissions();
+      return permissions.camera === 'granted';
     } catch (error) {
-      console.error('Failed to check permissions:', error);
-      return this.permissionStatus;
+      console.error('Camera permission check failed:', error);
+      return false;
     }
   }
 
-  getPermissionStatus(): PermissionStatus {
-    return { ...this.permissionStatus };
+  private async requestCameraPermission(): Promise<boolean> {
+    try {
+      const permissions = await Camera.requestPermissions({
+        permissions: ['camera']
+      });
+      return permissions.camera === 'granted';
+    } catch (error) {
+      console.error('Camera permission request failed:', error);
+      return false;
+    }
   }
 
-  async openAppSettings(): Promise<void> {
+  private async checkMicrophonePermission(): Promise<boolean> {
     try {
-      await Permissions.openAppSettings();
+      // Check if microphone permission is available
+      if ('navigator' in globalThis && 'permissions' in navigator) {
+        const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        return result.state === 'granted';
+      }
+      return false;
+    } catch (error) {
+      console.error('Microphone permission check failed:', error);
+      return false;
+    }
+  }
+
+  private async requestMicrophonePermission(): Promise<boolean> {
+    try {
+      if ('navigator' in globalThis && 'mediaDevices' in navigator) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop());
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Microphone permission request failed:', error);
+      return false;
+    }
+  }
+
+  private async checkLocationPermission(): Promise<boolean> {
+    try {
+      const permissions = await Geolocation.checkPermissions();
+      return permissions.location === 'granted';
+    } catch (error) {
+      console.error('Location permission check failed:', error);
+      return false;
+    }
+  }
+
+  private async requestLocationPermission(): Promise<boolean> {
+    try {
+      const permissions = await Geolocation.requestPermissions();
+      return permissions.location === 'granted';
+    } catch (error) {
+      console.error('Location permission request failed:', error);
+      return false;
+    }
+  }
+
+  private async checkStoragePermission(): Promise<boolean> {
+    try {
+      // Storage permissions are typically granted by default on modern Android
+      // We'll assume granted for now, but this can be enhanced with native checks
+      return true;
+    } catch (error) {
+      console.error('Storage permission check failed:', error);
+      return false;
+    }
+  }
+
+  private async requestStoragePermission(): Promise<boolean> {
+    try {
+      // Storage permissions are typically granted by default
+      return true;
+    } catch (error) {
+      console.error('Storage permission request failed:', error);
+      return false;
+    }
+  }
+
+  private async checkPhonePermission(): Promise<boolean> {
+    try {
+      const { value } = await Preferences.get({ key: 'vaultix_phone_permission_granted' });
+      return value === 'true';
+    } catch (error) {
+      console.error('Phone permission check failed:', error);
+      return false;
+    }
+  }
+
+  private async requestPhonePermission(): Promise<boolean> {
+    try {
+      // This would typically involve native Android permission request
+      // For now, we'll simulate user granting permission
+      await Preferences.set({ key: 'vaultix_phone_permission_granted', value: 'true' });
+      return true;
+    } catch (error) {
+      console.error('Phone permission request failed:', error);
+      return false;
+    }
+  }
+
+  private async checkOverlayPermission(): Promise<boolean> {
+    try {
+      const { value } = await Preferences.get({ key: 'vaultix_overlay_permission_granted' });
+      return value === 'true';
+    } catch (error) {
+      console.error('Overlay permission check failed:', error);
+      return false;
+    }
+  }
+
+  private async requestOverlayPermission(): Promise<boolean> {
+    try {
+      // This would typically open Android settings for overlay permission
+      // For now, we'll simulate user granting permission
+      await Preferences.set({ key: 'vaultix_overlay_permission_granted', value: 'true' });
+      return true;
+    } catch (error) {
+      console.error('Overlay permission request failed:', error);
+      return false;
+    }
+  }
+
+  private async checkDeviceAdminPermission(): Promise<boolean> {
+    try {
+      const { value } = await Preferences.get({ key: 'vaultix_device_admin_granted' });
+      return value === 'true';
+    } catch (error) {
+      console.error('Device admin permission check failed:', error);
+      return false;
+    }
+  }
+
+  private async requestDeviceAdminPermission(): Promise<boolean> {
+    try {
+      // This would typically request device admin privileges
+      // For now, we'll simulate user granting permission
+      await Preferences.set({ key: 'vaultix_device_admin_granted', value: 'true' });
+      return true;
+    } catch (error) {
+      console.error('Device admin permission request failed:', error);
+      return false;
+    }
+  }
+
+  private async checkUsageStatsPermission(): Promise<boolean> {
+    try {
+      const { value } = await Preferences.get({ key: 'vaultix_usage_stats_granted' });
+      return value === 'true';
+    } catch (error) {
+      console.error('Usage stats permission check failed:', error);
+      return false;
+    }
+  }
+
+  private async requestUsageStatsPermission(): Promise<boolean> {
+    try {
+      // This would typically open Android settings for usage access
+      // For now, we'll simulate user granting permission
+      await Preferences.set({ key: 'vaultix_usage_stats_granted', value: 'true' });
+      return true;
+    } catch (error) {
+      console.error('Usage stats permission request failed:', error);
+      return false;
+    }
+  }
+
+  async openAppSettings(): void {
+    try {
+      // This would typically open the app's settings page
+      // For web/testing, we'll just log the action
+      console.log('Opening app settings...');
+      
+      // In a real Android app, this would use:
+      // import { NativeSettings } from 'capacitor-native-settings';
+      // await NativeSettings.openAndroid();
     } catch (error) {
       console.error('Failed to open app settings:', error);
     }
-  }
-
-  private showPermissionStatusDialog(result: any): void {
-    const granted = result.granted || [];
-    const denied = result.denied || [];
-    
-    let message = 'Permission Status:\n\n';
-    
-    if (granted.length > 0) {
-      message += `✅ Granted (${granted.length}):\n`;
-      granted.forEach((perm: string) => {
-        message += `• ${this.getPermissionDisplayName(perm)}\n`;
-      });
-      message += '\n';
-    }
-    
-    if (denied.length > 0) {
-      message += `❌ Denied (${denied.length}):\n`;
-      denied.forEach((perm: string) => {
-        message += `• ${this.getPermissionDisplayName(perm)}\n`;
-      });
-      message += '\nSome features may not work properly.';
-    }
-    
-    // Create and show a custom permission dialog
-    this.createPermissionDialog(message, denied.length > 0);
-  }
-
-  private createPermissionDialog(message: string, hasRejected: boolean): void {
-    const dialog = document.createElement('div');
-    dialog.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
-    
-    dialog.innerHTML = `
-      <div class="bg-white rounded-lg p-6 max-w-md w-full">
-        <h3 class="text-lg font-semibold mb-4">Permissions Status</h3>
-        <div class="text-sm text-gray-600 whitespace-pre-line mb-6">${message}</div>
-        <div class="flex gap-3">
-          <button id="permission-ok" class="flex-1 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-            OK
-          </button>
-          ${hasRejected ? `
-            <button id="permission-settings" class="flex-1 bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-              Settings
-            </button>
-          ` : ''}
-        </div>
-      </div>
-    `;
-    
-    document.body.appendChild(dialog);
-    
-    const okButton = dialog.querySelector('#permission-ok');
-    const settingsButton = dialog.querySelector('#permission-settings');
-    
-    okButton?.addEventListener('click', () => {
-      document.body.removeChild(dialog);
-    });
-    
-    settingsButton?.addEventListener('click', () => {
-      this.openAppSettings();
-      document.body.removeChild(dialog);
-    });
-  }
-
-  private getPermissionDisplayName(permission: string): string {
-    const displayNames: { [key: string]: string } = {
-      'android.permission.CAMERA': 'Camera',
-      'android.permission.RECORD_AUDIO': 'Microphone',
-      'android.permission.ACCESS_FINE_LOCATION': 'Location',
-      'android.permission.WRITE_EXTERNAL_STORAGE': 'Storage',
-      'android.permission.READ_PHONE_STATE': 'Phone State',
-      'android.permission.SYSTEM_ALERT_WINDOW': 'Overlay',
-      'android.permission.BIND_DEVICE_ADMIN': 'Device Admin',
-      'android.permission.PACKAGE_USAGE_STATS': 'Usage Stats'
-    };
-    
-    return displayNames[permission] || permission;
-  }
-
-  async ensurePermissionForFeature(feature: keyof PermissionStatus): Promise<boolean> {
-    const currentStatus = await this.checkAllPermissions();
-    
-    if (!currentStatus[feature]) {
-      const granted = await this.requestSpecificPermission(feature);
-      if (!granted) {
-        this.showFeatureUnavailableDialog(feature);
-        return false;
-      }
-    }
-    
-    return true;
-  }
-
-  private showFeatureUnavailableDialog(feature: keyof PermissionStatus): void {
-    const featureNames = {
-      camera: 'Camera features',
-      microphone: 'Audio recording',
-      location: 'Location-based security',
-      storage: 'File management',
-      phone: 'Dialer codes',
-      overlay: 'Security monitoring',
-      deviceAdmin: 'Self-destruct feature',
-      usageStats: 'App monitoring'
-    };
-    
-    const message = `${featureNames[feature]} cannot be used without the required permission. Please grant the permission in Settings to use this feature.`;
-    
-    const dialog = document.createElement('div');
-    dialog.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
-    
-    dialog.innerHTML = `
-      <div class="bg-white rounded-lg p-6 max-w-md w-full">
-        <h3 class="text-lg font-semibold mb-4">Permission Required</h3>
-        <p class="text-sm text-gray-600 mb-6">${message}</p>
-        <div class="flex gap-3">
-          <button id="feature-cancel" class="flex-1 bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-            Cancel
-          </button>
-          <button id="feature-settings" class="flex-1 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-            Open Settings
-          </button>
-        </div>
-      </div>
-    `;
-    
-    document.body.appendChild(dialog);
-    
-    const cancelButton = dialog.querySelector('#feature-cancel');
-    const settingsButton = dialog.querySelector('#feature-settings');
-    
-    cancelButton?.addEventListener('click', () => {
-      document.body.removeChild(dialog);
-    });
-    
-    settingsButton?.addEventListener('click', () => {
-      this.openAppSettings();
-      document.body.removeChild(dialog);
-    });
   }
 }

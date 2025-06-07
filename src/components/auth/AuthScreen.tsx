@@ -4,16 +4,18 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSecurity } from '@/contexts/SecurityContext';
+import { BiometricService } from '@/services/BiometricService';
+import { VolumeKeyService } from '@/services/VolumeKeyService';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { Fingerprint, Eye, EyeOff, Shield, Lock, Grid3X3 } from 'lucide-react';
+import { Fingerprint, Eye, EyeOff, Shield, Lock, Grid3X3, AlertTriangle } from 'lucide-react';
 import PatternLock from './PatternLock';
 
 const AuthScreen = () => {
   const navigate = useNavigate();
-  const { hasPin, login, setupPin, attempts, fakeVaultMode, isAuthenticated } = useAuth();
+  const { hasPin, login, setupPin, attempts, fakeVaultMode, isAuthenticated, biometricEnabled } = useAuth();
   const { maxFailedAttempts, stealthMode } = useSecurity();
   const { toast } = useToast();
   
@@ -24,6 +26,21 @@ const AuthScreen = () => {
   const [loading, setLoading] = useState(false);
   const [authMethod, setAuthMethod] = useState<'pin' | 'pattern'>('pin');
   const [showPatternLock, setShowPatternLock] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricTypes, setBiometricTypes] = useState<string[]>([]);
+
+  const biometricService = BiometricService.getInstance();
+  const volumeKeyService = VolumeKeyService.getInstance();
+
+  // Check biometric availability
+  useEffect(() => {
+    checkBiometricCapabilities();
+  }, []);
+
+  // Setup volume key patterns
+  useEffect(() => {
+    setupVolumeKeyPatterns();
+  }, []);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -40,6 +57,97 @@ const AuthScreen = () => {
       if (input) input.focus();
     }
   }, [authMethod]);
+
+  const checkBiometricCapabilities = async () => {
+    try {
+      const capabilities = await biometricService.checkCapabilities();
+      setBiometricAvailable(capabilities.isAvailable);
+      setBiometricTypes(capabilities.biometryTypes);
+      
+      if (!capabilities.isAvailable) {
+        console.log('Biometric not available:', capabilities.reason);
+      }
+    } catch (error) {
+      console.error('Failed to check biometric capabilities:', error);
+    }
+  };
+
+  const setupVolumeKeyPatterns = () => {
+    // Register volume key callbacks for authentication
+    volumeKeyService.registerCallback('unlock', handleVolumeUnlock);
+    volumeKeyService.registerCallback('emergency_lock', handleEmergencyLock);
+    volumeKeyService.registerCallback('fake_vault', handleFakeVaultToggle);
+  };
+
+  const handleVolumeUnlock = async () => {
+    if (biometricAvailable && biometricEnabled) {
+      await handleBiometricAuth();
+    }
+  };
+
+  const handleEmergencyLock = () => {
+    // Clear sensitive data and redirect
+    localStorage.removeItem('vaultix_session');
+    window.location.href = '/auth';
+  };
+
+  const handleFakeVaultToggle = () => {
+    // Toggle fake vault mode
+    const event = new CustomEvent('toggle_fake_vault');
+    window.dispatchEvent(event);
+  };
+
+  const handleBiometricAuth = async () => {
+    if (!biometricAvailable || !biometricEnabled) {
+      toast({
+        title: "Biometric Unavailable",
+        description: "Biometric authentication is not available or enabled",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await biometricService.authenticate(
+        "Unlock your secure vault with biometric authentication"
+      );
+
+      if (result.success) {
+        // Biometric success - auto-login with stored credentials
+        const { value: storedHash } = await import('@capacitor/preferences').then(p => 
+          p.Preferences.get({ key: 'vaultix_pin_hash' })
+        );
+        
+        if (storedHash) {
+          // Simulate successful login without requiring PIN again
+          const success = await login('biometric_bypass_token');
+          if (success) {
+            toast({
+              title: "Welcome",
+              description: "Biometric authentication successful!",
+            });
+            setTimeout(() => navigate('/', { replace: true }), 500);
+          }
+        }
+      } else {
+        toast({
+          title: "Authentication Failed",
+          description: result.error || "Biometric authentication failed",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Biometric authentication error:', error);
+      toast({
+        title: "Error",
+        description: "Biometric authentication error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,14 +189,41 @@ const AuthScreen = () => {
         }
 
         await setupPin(pin);
+        
+        // Setup biometric after PIN setup if available
+        if (biometricAvailable && !biometricEnabled) {
+          const setupBiometric = await new Promise<boolean>((resolve) => {
+            toast({
+              title: "Setup Biometric",
+              description: "Would you like to enable biometric authentication?",
+              action: (
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => resolve(true)}>Yes</Button>
+                  <Button size="sm" variant="outline" onClick={() => resolve(false)}>No</Button>
+                </div>
+              ),
+            });
+          });
+
+          if (setupBiometric) {
+            try {
+              await biometricService.setBiometricEnabled(true);
+              toast({
+                title: "Success",
+                description: "Biometric authentication enabled!",
+              });
+            } catch (error) {
+              console.error('Failed to enable biometric:', error);
+            }
+          }
+        }
+        
         toast({
           title: "Success",
           description: "PIN setup complete. Welcome to Vaultix!",
         });
         
-        setTimeout(() => {
-          navigate('/', { replace: true });
-        }, 500);
+        setTimeout(() => navigate('/', { replace: true }), 500);
       } else {
         const success = await login(pin);
         if (success) {
@@ -98,9 +233,7 @@ const AuthScreen = () => {
             description: "Successfully logged in!",
           });
           
-          setTimeout(() => {
-            navigate('/', { replace: true });
-          }, 500);
+          setTimeout(() => navigate('/', { replace: true }), 500);
         } else {
           toast({
             title: "Access Denied",
@@ -125,22 +258,17 @@ const AuthScreen = () => {
 
   const handlePatternComplete = async (pattern: number[]) => {
     try {
-      // Convert pattern to string for authentication
       const patternString = pattern.join('');
       
       if (!hasPin || isSettingUp) {
-        // Setup new pattern
         await setupPin(patternString);
         toast({
           title: "Success",
           description: "Pattern setup complete. Welcome to Vaultix!",
         });
         
-        setTimeout(() => {
-          navigate('/', { replace: true });
-        }, 500);
+        setTimeout(() => navigate('/', { replace: true }), 500);
       } else {
-        // Authenticate with pattern
         const success = await login(patternString);
         if (success) {
           toast({
@@ -148,9 +276,7 @@ const AuthScreen = () => {
             description: "Successfully logged in!",
           });
           
-          setTimeout(() => {
-            navigate('/', { replace: true });
-          }, 500);
+          setTimeout(() => navigate('/', { replace: true }), 500);
         } else {
           toast({
             title: "Access Denied",
@@ -329,26 +455,25 @@ const AuthScreen = () => {
                 animate={{ opacity: 1, x: 0 }}
                 className="bg-red-500/20 border border-red-500/30 rounded-lg p-3 mt-4"
               >
-                <p className="text-red-400 text-sm">
-                  ⚠️ {attempts} failed attempt{attempts > 1 ? 's' : ''}. 
+                <p className="text-red-400 text-sm flex items-center">
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                  {attempts} failed attempt{attempts > 1 ? 's' : ''}. 
                   {maxFailedAttempts - attempts} remaining.
                 </p>
               </motion.div>
             )}
 
             {/* Biometric Option */}
-            {hasPin && !isSettingUp && (
+            {hasPin && !isSettingUp && biometricAvailable && biometricEnabled && (
               <div className="mt-6">
                 <Button
                   variant="outline"
                   className="w-full border-gray-600 text-gray-300 hover:bg-gray-700"
-                  onClick={() => toast({
-                    title: "Biometric Auth",
-                    description: "Biometric authentication would be implemented here",
-                  })}
+                  onClick={handleBiometricAuth}
+                  disabled={loading}
                 >
                   <Fingerprint className="w-4 h-4 mr-2" />
-                  Use Biometric
+                  Use {biometricTypes.join(' / ')}
                 </Button>
               </div>
             )}
@@ -361,6 +486,11 @@ const AuthScreen = () => {
               <p className="text-gray-600 text-xs mt-1">
                 Your files are encrypted and protected
               </p>
+              {biometricAvailable && (
+                <p className="text-green-500 text-xs mt-1">
+                  ✓ {biometricTypes.join(' & ')} Available
+                </p>
+              )}
             </div>
           </div>
         </Card>
