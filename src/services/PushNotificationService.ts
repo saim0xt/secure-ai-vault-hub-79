@@ -1,5 +1,5 @@
 
-import { PushNotifications, PushNotificationSchema, ActionPerformed, PushNotificationToken, PermissionStatus } from '@capacitor/push-notifications';
+import { LocalNotifications, ScheduleOptions } from '@capacitor/local-notifications';
 import { Preferences } from '@capacitor/preferences';
 
 export interface NotificationSchedule {
@@ -14,7 +14,6 @@ export interface NotificationSchedule {
 
 export class PushNotificationService {
   private static instance: PushNotificationService;
-  private token: string = '';
 
   static getInstance(): PushNotificationService {
     if (!PushNotificationService.instance) {
@@ -25,71 +24,34 @@ export class PushNotificationService {
 
   async initialize(): Promise<void> {
     try {
-      // Request permission
-      let permStatus = await PushNotifications.checkPermissions();
+      // Request permission for local notifications
+      const permission = await LocalNotifications.requestPermissions();
       
-      if (permStatus.receive === 'prompt') {
-        permStatus = await PushNotifications.requestPermissions();
+      if (permission.display !== 'granted') {
+        console.warn('Local notification permission not granted');
+        return;
       }
-      
-      if (permStatus.receive !== 'granted') {
-        throw new Error('Push notification permission denied');
-      }
-      
-      // Register for push notifications
-      await PushNotifications.register();
-      
-      // Listen for token registration
-      PushNotifications.addListener('registration', (token: PushNotificationToken) => {
-        this.token = token.value;
-        console.log('Push registration success, token:', token.value);
-        this.saveToken(token.value);
-      });
-      
-      // Listen for registration errors
-      PushNotifications.addListener('registrationError', (error: any) => {
-        console.error('Registration error:', error);
-      });
-      
-      // Listen for push notifications
-      PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
-        console.log('Push received:', notification);
-        this.handleNotificationReceived(notification);
-      });
       
       // Listen for notification actions
-      PushNotifications.addListener('pushNotificationActionPerformed', (notification: ActionPerformed) => {
-        console.log('Push action performed:', notification);
+      LocalNotifications.addListener('localNotificationActionPerformed', (notification) => {
         this.handleNotificationAction(notification);
       });
+
+      // Schedule default notifications
+      await this.scheduleSecurityTips();
+      await this.scheduleReminders();
       
-      console.log('Push notification service initialized');
+      console.log('Local notification service initialized');
     } catch (error) {
-      console.error('Failed to initialize push notifications:', error);
+      console.error('Failed to initialize local notifications:', error);
     }
   }
 
-  private async saveToken(token: string): Promise<void> {
-    try {
-      await Preferences.set({ key: 'vaultix_push_token', value: token });
-    } catch (error) {
-      console.error('Failed to save push token:', error);
-    }
-  }
-
-  private async handleNotificationReceived(notification: PushNotificationSchema): Promise<void> {
-    // Handle notification when app is in foreground
-    console.log('Notification received in foreground:', notification);
-    
-    // Store notification for later viewing
-    await this.storeNotification(notification);
-  }
-
-  private async handleNotificationAction(action: ActionPerformed): Promise<void> {
-    const notification = action.notification;
+  private async handleNotificationAction(notification: any): Promise<void> {
+    const data = notification.notification.extra;
     
     // Handle different notification types
-    switch (notification.data?.type) {
+    switch (data?.type) {
       case 'security_alert':
         // Navigate to security logs
         window.location.href = '/breakin-logs';
@@ -107,32 +69,6 @@ export class PushNotificationService {
     }
   }
 
-  private async storeNotification(notification: PushNotificationSchema): Promise<void> {
-    try {
-      const stored = await Preferences.get({ key: 'vaultix_notifications' });
-      const notifications = stored.value ? JSON.parse(stored.value) : [];
-      
-      notifications.unshift({
-        id: notification.id || Date.now().toString(),
-        title: notification.title,
-        body: notification.body,
-        data: notification.data,
-        receivedAt: new Date().toISOString(),
-        read: false
-      });
-      
-      // Keep only last 50 notifications
-      notifications.splice(50);
-      
-      await Preferences.set({ 
-        key: 'vaultix_notifications', 
-        value: JSON.stringify(notifications) 
-      });
-    } catch (error) {
-      console.error('Failed to store notification:', error);
-    }
-  }
-
   async scheduleSecurityTips(): Promise<void> {
     const tips = [
       "Remember to use strong, unique passwords for all your accounts",
@@ -144,88 +80,114 @@ export class PushNotificationService {
       "Review your app permissions and remove unnecessary access",
       "Keep your Vaultix app updated for the latest security features"
     ];
-    
-    const schedules: NotificationSchedule[] = tips.map((tip, index) => ({
-      id: `security_tip_${index}`,
-      title: "Daily Security Tip",
-      body: tip,
-      type: 'security_tip',
-      scheduledTime: this.getRandomDailyTime(),
-      recurring: true,
-      enabled: true
-    }));
-    
-    await this.saveSchedules(schedules);
+
+    try {
+      // Schedule one tip per day at random times
+      const notifications: ScheduleOptions[] = tips.map((tip, index) => {
+        const scheduleDate = new Date();
+        scheduleDate.setDate(scheduleDate.getDate() + index);
+        scheduleDate.setHours(Math.floor(Math.random() * 12) + 9, Math.floor(Math.random() * 60), 0, 0);
+
+        return {
+          title: "Daily Security Tip",
+          body: tip,
+          id: 1000 + index,
+          schedule: { at: scheduleDate, repeats: false },
+          extra: { type: 'security_tip' }
+        };
+      });
+
+      await LocalNotifications.schedule({ notifications });
+      console.log('Security tips scheduled');
+    } catch (error) {
+      console.error('Failed to schedule security tips:', error);
+    }
   }
 
   async scheduleReminders(): Promise<void> {
-    const reminders: NotificationSchedule[] = [
-      {
-        id: 'daily_vault_check',
-        title: "Don't forget your vault!",
-        body: "Check your secure files and organize your vault",
-        type: 'reminder',
-        scheduledTime: '18:00', // 6 PM daily
-        recurring: true,
-        enabled: true
-      },
-      {
-        id: 'weekly_backup',
-        title: "Weekly Backup Reminder",
-        body: "It's time to backup your vault data",
-        type: 'reminder',
-        scheduledTime: 'Sunday 10:00',
-        recurring: true,
-        enabled: true
-      },
-      {
-        id: 'spin_wheel_available',
-        title: "Spin Wheel Available!",
-        body: "Your daily spin wheel is ready. Earn coins now!",
-        type: 'reward',
-        scheduledTime: '12:00', // Noon daily
-        recurring: true,
-        enabled: true
-      }
-    ];
-    
-    await this.saveSchedules(reminders);
-  }
-
-  private getRandomDailyTime(): string {
-    const hours = Math.floor(Math.random() * 24);
-    const minutes = Math.floor(Math.random() * 60);
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  }
-
-  private async saveSchedules(schedules: NotificationSchedule[]): Promise<void> {
     try {
-      await Preferences.set({ 
-        key: 'vaultix_notification_schedules', 
-        value: JSON.stringify(schedules) 
-      });
+      const notifications: ScheduleOptions[] = [
+        {
+          title: "Don't forget your vault!",
+          body: "Check your secure files and organize your vault",
+          id: 2001,
+          schedule: { 
+            on: { hour: 18, minute: 0 },
+            repeats: true 
+          },
+          extra: { type: 'reminder' }
+        },
+        {
+          title: "Weekly Backup Reminder",
+          body: "It's time to backup your vault data",
+          id: 2002,
+          schedule: { 
+            on: { weekday: 1, hour: 10, minute: 0 },
+            repeats: true 
+          },
+          extra: { type: 'reminder' }
+        },
+        {
+          title: "Spin Wheel Available!",
+          body: "Your daily spin wheel is ready. Earn coins now!",
+          id: 2003,
+          schedule: { 
+            on: { hour: 12, minute: 0 },
+            repeats: true 
+          },
+          extra: { type: 'reward' }
+        }
+      ];
+
+      await LocalNotifications.schedule({ notifications });
+      console.log('Reminders scheduled');
     } catch (error) {
-      console.error('Failed to save notification schedules:', error);
+      console.error('Failed to schedule reminders:', error);
     }
   }
 
   async sendSecurityAlert(title: string, body: string): Promise<void> {
     try {
-      // This would typically send a push notification via a backend service
-      // For now, we'll store it as a local notification
-      const notification = {
-        id: Date.now().toString(),
+      const notification: ScheduleOptions = {
+        title,
+        body,
+        id: Date.now(),
+        schedule: { at: new Date(Date.now() + 1000) },
+        extra: { type: 'security_alert' }
+      };
+
+      await LocalNotifications.schedule({ notifications: [notification] });
+      
+      // Also store it for history
+      await this.storeNotification({
+        id: notification.id!.toString(),
         title,
         body,
         data: { type: 'security_alert' },
         receivedAt: new Date().toISOString(),
         read: false
-      };
+      });
       
-      await this.storeNotification(notification as any);
       console.log('Security alert sent:', title);
     } catch (error) {
       console.error('Failed to send security alert:', error);
+    }
+  }
+
+  private async storeNotification(notification: any): Promise<void> {
+    try {
+      const stored = await Preferences.get({ key: 'vaultix_notifications' });
+      const notifications = stored.value ? JSON.parse(stored.value) : [];
+      
+      notifications.unshift(notification);
+      notifications.splice(50); // Keep only last 50
+      
+      await Preferences.set({ 
+        key: 'vaultix_notifications', 
+        value: JSON.stringify(notifications) 
+      });
+    } catch (error) {
+      console.error('Failed to store notification:', error);
     }
   }
 
@@ -252,6 +214,40 @@ export class PushNotificationService {
       });
     } catch (error) {
       console.error('Failed to mark notification as read:', error);
+    }
+  }
+
+  async cancelScheduledNotifications(type?: string): Promise<void> {
+    try {
+      const pending = await LocalNotifications.getPending();
+      
+      if (type) {
+        // Cancel specific type
+        const toCancel = pending.notifications.filter(n => n.extra?.type === type);
+        if (toCancel.length > 0) {
+          await LocalNotifications.cancel({ 
+            notifications: toCancel.map(n => ({ id: n.id }))
+          });
+        }
+      } else {
+        // Cancel all
+        await LocalNotifications.cancel({ 
+          notifications: pending.notifications.map(n => ({ id: n.id }))
+        });
+      }
+    } catch (error) {
+      console.error('Failed to cancel notifications:', error);
+    }
+  }
+
+  async rescheduleNotifications(): Promise<void> {
+    try {
+      // Cancel existing and reschedule
+      await this.cancelScheduledNotifications();
+      await this.scheduleSecurityTips();
+      await this.scheduleReminders();
+    } catch (error) {
+      console.error('Failed to reschedule notifications:', error);
     }
   }
 }

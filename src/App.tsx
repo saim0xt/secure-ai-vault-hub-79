@@ -72,10 +72,13 @@ const AppContent = () => {
         const { TestingSuiteService } = await import('./services/TestingSuiteService');
         const { PermissionsService } = await import('./services/PermissionsService');
         const { BiometricService } = await import('./services/BiometricService');
+        const { LANSyncService } = await import('./services/LANSyncService');
+        const { AIProcessingService } = await import('./services/AIProcessingService');
         
         // Initialize all services (order matters for dependencies)
         await PermissionsService.getInstance().initialize();
         await BiometricService.getInstance().checkCapabilities();
+        await AIProcessingService.getInstance().loadAPIKeys();
         
         await Promise.all([
           AdMobService.getInstance().initialize(),
@@ -88,7 +91,8 @@ const AppContent = () => {
           EnhancedAIService.getInstance().initialize(),
           CrossDeviceSyncService.getInstance().initialize(),
           AdvancedAnalyticsService.getInstance().initialize(),
-          TestingSuiteService.getInstance().initialize()
+          TestingSuiteService.getInstance().initialize(),
+          LANSyncService.getInstance().initialize()
         ]);
         
         console.log('Platform and enhanced services initialization successful');
@@ -172,6 +176,11 @@ const AppContent = () => {
         <Route path="/permissions" element={
           <ProtectedRoute>
             <PermissionsManager />
+          </ProtectedRoute>
+        } />
+        <Route path="/lan-sync" element={
+          <ProtectedRoute>
+            {React.lazy(() => import('./components/network/LANSyncManager'))}
           </ProtectedRoute>
         } />
         
