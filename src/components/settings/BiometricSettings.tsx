@@ -229,7 +229,7 @@ export default function BiometricSettings() {
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
-                {capabilities.reason}
+                Biometric authentication is not available on this device. Please check device settings.
               </AlertDescription>
             </Alert>
           )}

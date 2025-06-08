@@ -58,8 +58,7 @@ export class BiometricService {
   async authenticate(reason: string): Promise<BiometricResult> {
     try {
       await BiometricAuth.authenticate({
-        reason,
-        negativeButtonText: 'Cancel'
+        reason
       });
       
       return { success: true };
@@ -75,8 +74,7 @@ export class BiometricService {
   async authenticateWithPrompt(title: string, subtitle: string, description: string): Promise<BiometricResult> {
     try {
       await BiometricAuth.authenticate({
-        reason: description,
-        negativeButtonText: 'Cancel'
+        reason: description
       });
       
       return { success: true };
