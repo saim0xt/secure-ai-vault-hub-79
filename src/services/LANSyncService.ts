@@ -1,3 +1,4 @@
+
 import { RealLANDiscoveryService, RealLANDevice } from './RealLANDiscoveryService';
 import { DeviceDetectionService } from './DeviceDetectionService';
 
@@ -85,7 +86,8 @@ export class LANSyncService {
 
   async syncWithDevice(deviceId: string, progressCallback?: (progress: SyncProgress) => void): Promise<boolean> {
     try {
-      const device = this.discoveredDevices.find(d => d.id === deviceId);
+      const devices = this.getDiscoveredDevices();
+      const device = devices.find(d => d.id === deviceId);
       if (!device) {
         throw new Error('Device not found');
       }
@@ -130,7 +132,8 @@ export class LANSyncService {
   }
 
   async syncWithDevices(): Promise<void> {
-    const onlineDevices = this.discoveredDevices.filter(d => d.isOnline);
+    const devices = this.getDiscoveredDevices();
+    const onlineDevices = devices.filter(d => d.isOnline);
     for (const device of onlineDevices) {
       await this.syncWithDevice(device.id);
     }

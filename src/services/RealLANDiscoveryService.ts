@@ -16,7 +16,7 @@ export interface RealLANDevice {
 export class RealLANDiscoveryService {
   private static instance: RealLANDiscoveryService;
   private discoveredDevices: RealLANDevice[] = [];
-  private isScanning: boolean = false;
+  private scanningInProgress: boolean = false;
 
   static getInstance(): RealLANDiscoveryService {
     if (!RealLANDiscoveryService.instance) {
@@ -26,10 +26,10 @@ export class RealLANDiscoveryService {
   }
 
   async startDiscovery(): Promise<void> {
-    if (this.isScanning) return;
+    if (this.scanningInProgress) return;
 
     try {
-      this.isScanning = true;
+      this.scanningInProgress = true;
       console.log('Starting real LAN discovery...');
 
       const deviceDetection = DeviceDetectionService.getInstance();
@@ -43,7 +43,7 @@ export class RealLANDiscoveryService {
     } catch (error) {
       console.error('LAN discovery failed:', error);
     } finally {
-      this.isScanning = false;
+      this.scanningInProgress = false;
     }
   }
 
@@ -205,6 +205,6 @@ export class RealLANDiscoveryService {
   }
 
   isScanning(): boolean {
-    return this.isScanning;
+    return this.scanningInProgress;
   }
 }
