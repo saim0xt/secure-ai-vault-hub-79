@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -92,16 +91,18 @@ const Settings = () => {
       
       // Save API keys to AI service
       if (newSettings.openAIKey || newSettings.googleCloudKey || newSettings.elevenLabsKey) {
-        await AIAPIService.getInstance().configure({
+        await AIAPIService.getInstance().saveConfig({
           openAIKey: updatedSettings.openAIKey,
           googleCloudKey: updatedSettings.googleCloudKey,
-          elevenLabsKey: updatedSettings.elevenLabsKey
+          elevenLabsKey: updatedSettings.elevenLabsKey,
+          enabled: true
         });
       }
 
       // Configure Google Drive if keys provided
       if (newSettings.googleDriveClientId || newSettings.googleDriveAPIKey) {
-        await GoogleDriveService.getInstance().initialize({
+        const driveService = GoogleDriveService.getInstance();
+        await driveService.setConfig({
           clientId: updatedSettings.googleDriveClientId,
           apiKey: updatedSettings.googleDriveAPIKey
         });

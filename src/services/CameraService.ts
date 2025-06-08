@@ -1,4 +1,3 @@
-
 import { Camera, CameraResultType, CameraSource, Photo } from '@capacitor/camera';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Preferences } from '@capacitor/preferences';
@@ -103,7 +102,6 @@ export class CameraService {
       type: 'image' as const,
       size: metadata.size,
       dateAdded: timestamp,
-      category: 'images',
       tags: ['camera', 'photo'],
       content: photo.dataUrl || '',
       metadata,

@@ -1,4 +1,3 @@
-
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Preferences } from '@capacitor/preferences';
 import { VaultFile } from '@/contexts/VaultContext';
@@ -127,7 +126,6 @@ export class VoiceRecordingService {
       type: 'audio' as const,
       size: blob.size,
       dateAdded: timestamp,
-      category: 'audio',
       tags: ['voice', 'recording'],
       content: base64,
       path: `secure_recordings/${fileName}`,

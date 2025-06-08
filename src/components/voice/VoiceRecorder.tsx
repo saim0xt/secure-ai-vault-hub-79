@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { useVault } from '@/contexts/VaultContext';
 import { useToast } from '@/hooks/use-toast';
@@ -22,6 +21,7 @@ const VoiceRecorder = () => {
   const [transcription, setTranscription] = useState('');
   const [autoTranscribe, setAutoTranscribe] = useState(true);
   const [isGeneratingSpeech, setIsGeneratingSpeech] = useState(false);
+  const [currentVaultFile, setCurrentVaultFile] = useState<any>(null);
   
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const voiceService = VoiceRecordingService.getInstance();
@@ -35,6 +35,7 @@ const VoiceRecorder = () => {
       setRecordingTime(0);
       setTranscription('');
       setAudioBlob(null);
+      setCurrentVaultFile(null);
       
       // Start timer
       timerRef.current = setInterval(() => {
@@ -55,6 +56,7 @@ const VoiceRecorder = () => {
     try {
       const vaultFile = await voiceService.stopRecording();
       setIsRecording(false);
+      setCurrentVaultFile(vaultFile);
       
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -182,6 +184,7 @@ const VoiceRecorder = () => {
     setAudioBlob(null);
     setRecordingTime(0);
     setTranscription('');
+    setCurrentVaultFile(null);
   };
 
   const showRewardedAd = async () => {
@@ -201,12 +204,10 @@ const VoiceRecorder = () => {
   };
 
   const transcribeAudioBlob = async () => {
-    if (!audioBlob) return;
+    if (!audioBlob || !currentVaultFile) return;
     
-    // Convert blob to base64
-    const arrayBuffer = await audioBlob.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-    await transcribeRecording(base64);
+    // Use the stored VaultFile content for transcription
+    await transcribeRecording(currentVaultFile.content);
   };
 
   return (
