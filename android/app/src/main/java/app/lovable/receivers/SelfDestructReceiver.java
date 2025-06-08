@@ -7,131 +7,102 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.util.Log;
-
-import java.io.File;
+import android.widget.Toast;
 
 public class SelfDestructReceiver extends DeviceAdminReceiver {
     private static final String TAG = "SelfDestructReceiver";
-
-    @Override
-    public void onReceive(Context context, Intent intent) {
-        if ("app.lovable.SELF_DESTRUCT".equals(intent.getAction())) {
-            performSelfDestruct(context);
-        } else {
-            super.onReceive(context, intent);
-        }
-    }
-
+    
     @Override
     public void onEnabled(Context context, Intent intent) {
         super.onEnabled(context, intent);
-        Log.d(TAG, "Device admin enabled for self-destruct capability");
+        Log.d(TAG, "Device admin enabled");
+        Toast.makeText(context, "Vaultix security features enabled", Toast.LENGTH_SHORT).show();
+        
+        // Save device admin status
+        SharedPreferences prefs = context.getSharedPreferences("vaultix_security", Context.MODE_PRIVATE);
+        prefs.edit().putBoolean("device_admin_enabled", true).apply();
     }
-
+    
     @Override
     public void onDisabled(Context context, Intent intent) {
         super.onDisabled(context, intent);
         Log.d(TAG, "Device admin disabled");
+        Toast.makeText(context, "Vaultix security features disabled", Toast.LENGTH_SHORT).show();
+        
+        // Clear device admin status
+        SharedPreferences prefs = context.getSharedPreferences("vaultix_security", Context.MODE_PRIVATE);
+        prefs.edit().putBoolean("device_admin_enabled", false).apply();
     }
-
-    private void performSelfDestruct(Context context) {
-        Log.w(TAG, "SELF-DESTRUCT INITIATED");
+    
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        super.onReceive(context, intent);
+        
+        String action = intent.getAction();
+        if ("app.lovable.SELF_DESTRUCT".equals(action)) {
+            boolean confirmed = intent.getBooleanExtra("confirmed", false);
+            if (confirmed) {
+                executeSelfDestruct(context);
+            }
+        }
+    }
+    
+    private void executeSelfDestruct(Context context) {
+        Log.w(TAG, "Executing self-destruct sequence");
         
         try {
-            // Clear all app data
-            clearAllAppData(context);
-            
-            // Clear shared preferences
-            clearSharedPreferences(context);
-            
-            // Clear app cache
-            clearAppCache(context);
-            
-            // If device admin is enabled, perform factory reset
             DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
             if (dpm != null && dpm.isAdminActive(new android.content.ComponentName(context, SelfDestructReceiver.class))) {
-                // Factory reset (requires device admin permissions)
-                dpm.wipeData(DevicePolicyManager.WIPE_EXTERNAL_STORAGE);
+                
+                // Show warning
+                Toast.makeText(context, "Emergency wipe initiated...", Toast.LENGTH_LONG).show();
+                
+                // Wait a moment then wipe
+                new android.os.Handler().postDelayed(() -> {
+                    try {
+                        // Wipe device data (factory reset)
+                        dpm.wipeData(DevicePolicyManager.WIPE_EXTERNAL_STORAGE);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Failed to wipe device", e);
+                        // Fallback: clear app data
+                        clearAppData(context);
+                    }
+                }, 3000); // 3 second delay
+                
             } else {
-                // Fallback: just clear app data and exit
-                clearAppDataAndExit(context);
+                Log.w(TAG, "Device admin not active, performing app data wipe only");
+                clearAppData(context);
             }
             
         } catch (Exception e) {
-            Log.e(TAG, "Self-destruct failed", e);
+            Log.e(TAG, "Self-destruct execution failed", e);
         }
     }
-
-    private void clearAllAppData(Context context) {
+    
+    private void clearAppData(Context context) {
         try {
-            // Clear internal storage
-            File internalDir = context.getFilesDir();
-            deleteRecursive(internalDir);
+            // Clear all app data
+            SharedPreferences.Editor editor = context.getSharedPreferences("vaultix_vault", Context.MODE_PRIVATE).edit();
+            editor.clear().apply();
             
-            // Clear external storage if available
-            File externalDir = context.getExternalFilesDir(null);
-            if (externalDir != null) {
-                deleteRecursive(externalDir);
-            }
+            editor = context.getSharedPreferences("vaultix_security", Context.MODE_PRIVATE).edit();
+            editor.clear().apply();
             
-            // Clear databases
-            File databaseDir = new File(context.getApplicationInfo().dataDir + "/databases");
-            deleteRecursive(databaseDir);
+            editor = context.getSharedPreferences("vaultix_settings", Context.MODE_PRIVATE).edit();
+            editor.clear().apply();
+            
+            // Clear cache and files
+            context.getCacheDir().delete();
+            
+            Log.w(TAG, "App data cleared as part of self-destruct");
+            
+            // Send broadcast to app
+            Intent intent = new Intent("vaultix.self.destruct.complete");
+            intent.putExtra("timestamp", System.currentTimeMillis());
+            context.sendBroadcast(intent);
             
         } catch (Exception e) {
             Log.e(TAG, "Failed to clear app data", e);
         }
-    }
-
-    private void clearSharedPreferences(Context context) {
-        try {
-            SharedPreferences prefs = context.getSharedPreferences("vaultix_prefs", Context.MODE_PRIVATE);
-            prefs.edit().clear().apply();
-            
-            // Clear all preference files
-            File prefsDir = new File(context.getApplicationInfo().dataDir + "/shared_prefs");
-            deleteRecursive(prefsDir);
-            
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to clear shared preferences", e);
-        }
-    }
-
-    private void clearAppCache(Context context) {
-        try {
-            File cacheDir = context.getCacheDir();
-            deleteRecursive(cacheDir);
-            
-            File externalCacheDir = context.getExternalCacheDir();
-            if (externalCacheDir != null) {
-                deleteRecursive(externalCacheDir);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to clear cache", e);
-        }
-    }
-
-    private void deleteRecursive(File fileOrDirectory) {
-        if (fileOrDirectory == null || !fileOrDirectory.exists()) return;
-        
-        if (fileOrDirectory.isDirectory()) {
-            File[] children = fileOrDirectory.listFiles();
-            if (children != null) {
-                for (File child : children) {
-                    deleteRecursive(child);
-                }
-            }
-        }
-        fileOrDirectory.delete();
-    }
-
-    private void clearAppDataAndExit(Context context) {
-        // Send broadcast to notify app of self-destruct
-        Intent intent = new Intent("vaultix.self.destruct.complete");
-        context.sendBroadcast(intent);
-        
-        // Force close the app
-        android.os.Process.killProcess(android.os.Process.myPid());
-        System.exit(0);
     }
 }

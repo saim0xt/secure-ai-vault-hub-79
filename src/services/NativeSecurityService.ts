@@ -14,12 +14,16 @@ export interface NativeSecurityPlugin {
   stopSecurityMonitoring(): Promise<{ success: boolean }>;
   executeDialerCode(options: { code: string }): Promise<{ success: boolean }>;
   startAutoBackup(): Promise<{ success: boolean }>;
+  requestDeviceAdmin(): Promise<{ success: boolean }>;
+  requestOverlayPermission(): Promise<{ success: boolean }>;
   getSecurityStatus(): Promise<{ 
     success: boolean; 
     stealthMode: boolean; 
     overlayPermission: boolean; 
     deviceAdmin: boolean; 
-    usageStatsPermission: boolean; 
+    usageStatsPermission: boolean;
+    volumeKeyCaptureEnabled: boolean;
+    screenshotPrevention: boolean;
   }>;
 }
 
@@ -30,6 +34,8 @@ export class NativeSecurityService {
   private isInitialized = false;
   private securityEnabled = false;
   private stealthMode = false;
+  private screenshotPrevention = false;
+  private volumeKeyCapture = false;
   private eventListeners: Map<string, Function[]> = new Map();
 
   static getInstance(): NativeSecurityService {
@@ -47,8 +53,16 @@ export class NativeSecurityService {
       await this.startSecurityMonitoring();
       await this.setupEventListeners();
       
+      // Get current security status
+      const status = await this.getSecurityStatus();
+      if (status) {
+        this.stealthMode = status.stealthMode;
+        this.screenshotPrevention = status.screenshotPrevention;
+        this.volumeKeyCapture = status.volumeKeyCaptureEnabled;
+      }
+      
       this.isInitialized = true;
-      console.log('Native security service initialized');
+      console.log('Native security service initialized successfully');
     } catch (error) {
       console.log('Native security not available (web mode):', error);
     }
@@ -57,38 +71,61 @@ export class NativeSecurityService {
   private async setupEventListeners(): Promise<void> {
     // Setup broadcast receivers for Android events
     if (typeof window !== 'undefined') {
-      // Listen for security alerts
+      // Security alerts
       document.addEventListener('vaultix.security.alert', (event: any) => {
         this.handleSecurityAlert(event.detail);
       });
 
-      // Listen for volume key events
+      // Volume key events
       document.addEventListener('vaultix.volume.changed', (event: any) => {
         this.handleVolumeKeyEvent(event.detail);
       });
 
-      // Listen for emergency patterns
+      // Emergency patterns
       document.addEventListener('vaultix.emergency.pattern', (event: any) => {
         this.handleEmergencyPattern(event.detail);
       });
 
-      // Listen for network changes
+      // Network changes
       document.addEventListener('vaultix.network.changed', (event: any) => {
         this.handleNetworkChange(event.detail);
       });
 
-      // Listen for screen state changes
+      // Screen state changes
       document.addEventListener('vaultix.screen.state', (event: any) => {
         this.handleScreenStateChange(event.detail);
       });
 
-      // Listen for secret dialer access
+      // Secret dialer access
       document.addEventListener('vaultix.secret.access', (event: any) => {
         this.handleSecretAccess(event.detail);
       });
+
+      // Screenshot detection
+      document.addEventListener('vaultix.screenshot.detected', (event: any) => {
+        this.handleScreenshotDetected(event.detail);
+      });
+
+      // Tamper detection
+      document.addEventListener('vaultix.tamper.detected', (event: any) => {
+        this.handleTamperDetected(event.detail);
+      });
+
+      // Boot completed
+      document.addEventListener('vaultix.boot.completed', (event: any) => {
+        this.handleBootCompleted(event.detail);
+      });
+
+      // Self-destruct complete
+      document.addEventListener('vaultix.self.destruct.complete', (event: any) => {
+        this.handleSelfDestructComplete(event.detail);
+      });
+
+      console.log('Native security event listeners setup complete');
     }
   }
 
+  // Event handlers
   private handleSecurityAlert(data: any): void {
     console.warn('Security Alert:', data);
     this.emitEvent('securityAlert', data);
@@ -119,33 +156,31 @@ export class NativeSecurityService {
     this.emitEvent('secretAccess', data);
   }
 
-  addEventListener(event: string, callback: Function): void {
-    if (!this.eventListeners.has(event)) {
-      this.eventListeners.set(event, []);
-    }
-    this.eventListeners.get(event)!.push(callback);
+  private handleScreenshotDetected(data: any): void {
+    console.warn('Screenshot attempt detected:', data);
+    this.emitEvent('screenshotDetected', data);
   }
 
-  removeEventListener(event: string, callback: Function): void {
-    const listeners = this.eventListeners.get(event);
-    if (listeners) {
-      const index = listeners.indexOf(callback);
-      if (index > -1) {
-        listeners.splice(index, 1);
-      }
-    }
+  private handleTamperDetected(data: any): void {
+    console.warn('Tampering detected:', data);
+    this.emitEvent('tamperDetected', data);
   }
 
-  private emitEvent(event: string, data: any): void {
-    const listeners = this.eventListeners.get(event);
-    if (listeners) {
-      listeners.forEach(callback => callback(data));
-    }
+  private handleBootCompleted(data: any): void {
+    console.log('Boot completed:', data);
+    this.emitEvent('bootCompleted', data);
   }
 
+  private handleSelfDestructComplete(data: any): void {
+    console.warn('Self-destruct completed:', data);
+    this.emitEvent('selfDestructComplete', data);
+  }
+
+  // Public API methods
   async enableScreenshotPrevention(): Promise<boolean> {
     try {
       const result = await NativeSecurity.enableScreenshotPrevention();
+      this.screenshotPrevention = result.success;
       console.log('Screenshot prevention enabled:', result.success);
       return result.success;
     } catch (error) {
@@ -157,6 +192,7 @@ export class NativeSecurityService {
   async disableScreenshotPrevention(): Promise<boolean> {
     try {
       const result = await NativeSecurity.disableScreenshotPrevention();
+      this.screenshotPrevention = !result.success;
       console.log('Screenshot prevention disabled:', result.success);
       return result.success;
     } catch (error) {
@@ -168,10 +204,23 @@ export class NativeSecurityService {
   async enableVolumeKeyCapture(): Promise<boolean> {
     try {
       const result = await NativeSecurity.enableVolumeKeyCapture();
+      this.volumeKeyCapture = result.success;
       console.log('Volume key capture enabled:', result.success);
       return result.success;
     } catch (error) {
       console.error('Failed to enable volume key capture:', error);
+      return false;
+    }
+  }
+
+  async disableVolumeKeyCapture(): Promise<boolean> {
+    try {
+      const result = await NativeSecurity.disableVolumeKeyCapture();
+      this.volumeKeyCapture = !result.success;
+      console.log('Volume key capture disabled:', result.success);
+      return result.success;
+    } catch (error) {
+      console.error('Failed to disable volume key capture:', error);
       return false;
     }
   }
@@ -230,6 +279,18 @@ export class NativeSecurityService {
     }
   }
 
+  async stopSecurityMonitoring(): Promise<boolean> {
+    try {
+      const result = await NativeSecurity.stopSecurityMonitoring();
+      this.securityEnabled = !result.success;
+      console.log('Security monitoring stopped:', result.success);
+      return result.success;
+    } catch (error) {
+      console.error('Failed to stop security monitoring:', error);
+      return false;
+    }
+  }
+
   async triggerSelfDestruct(confirmCode: string): Promise<boolean> {
     try {
       const result = await NativeSecurity.triggerSelfDestruct({ confirmCode });
@@ -263,21 +324,50 @@ export class NativeSecurityService {
     }
   }
 
+  async requestDeviceAdmin(): Promise<boolean> {
+    try {
+      const result = await NativeSecurity.requestDeviceAdmin();
+      console.log('Device admin requested:', result.success);
+      return result.success;
+    } catch (error) {
+      console.error('Failed to request device admin:', error);
+      return false;
+    }
+  }
+
+  async requestOverlayPermission(): Promise<boolean> {
+    try {
+      const result = await NativeSecurity.requestOverlayPermission();
+      console.log('Overlay permission requested:', result.success);
+      return result.success;
+    } catch (error) {
+      console.error('Failed to request overlay permission:', error);
+      return false;
+    }
+  }
+
   async getSecurityStatus(): Promise<{
     stealthMode: boolean;
     overlayPermission: boolean;
     deviceAdmin: boolean;
     usageStatsPermission: boolean;
+    volumeKeyCaptureEnabled: boolean;
+    screenshotPrevention: boolean;
   } | null> {
     try {
       const result = await NativeSecurity.getSecurityStatus();
       if (result.success) {
         this.stealthMode = result.stealthMode;
+        this.screenshotPrevention = result.screenshotPrevention;
+        this.volumeKeyCapture = result.volumeKeyCaptureEnabled;
+        
         return {
           stealthMode: result.stealthMode,
           overlayPermission: result.overlayPermission,
           deviceAdmin: result.deviceAdmin,
-          usageStatsPermission: result.usageStatsPermission
+          usageStatsPermission: result.usageStatsPermission,
+          volumeKeyCaptureEnabled: result.volumeKeyCaptureEnabled,
+          screenshotPrevention: result.screenshotPrevention
         };
       }
       return null;
@@ -287,11 +377,45 @@ export class NativeSecurityService {
     }
   }
 
+  // Event management
+  addEventListener(event: string, callback: Function): void {
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, []);
+    }
+    this.eventListeners.get(event)!.push(callback);
+  }
+
+  removeEventListener(event: string, callback: Function): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      const index = listeners.indexOf(callback);
+      if (index > -1) {
+        listeners.splice(index, 1);
+      }
+    }
+  }
+
+  private emitEvent(event: string, data: any): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      listeners.forEach(callback => callback(data));
+    }
+  }
+
+  // Status getters
   isSecurityActive(): boolean {
     return this.securityEnabled;
   }
 
   isStealthModeActive(): boolean {
     return this.stealthMode;
+  }
+
+  isScreenshotPreventionActive(): boolean {
+    return this.screenshotPrevention;
+  }
+
+  isVolumeKeyCaptureActive(): boolean {
+    return this.volumeKeyCapture;
   }
 }

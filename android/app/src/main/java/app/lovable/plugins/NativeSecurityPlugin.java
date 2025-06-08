@@ -14,6 +14,10 @@ import android.provider.Settings;
 import android.telephony.TelephonyManager;
 import android.view.WindowManager;
 import android.util.Log;
+import android.media.AudioManager;
+import android.view.KeyEvent;
+import android.app.KeyguardManager;
+import android.os.PowerManager;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -31,6 +35,7 @@ import app.lovable.services.SecurityMonitorService;
 import app.lovable.services.AutoBackupService;
 import app.lovable.receivers.DialerCodeReceiver;
 import app.lovable.receivers.SelfDestructReceiver;
+import app.lovable.receivers.VolumeButtonReceiver;
 
 @CapacitorPlugin(
     name = "NativeSecurity",
@@ -49,12 +54,21 @@ import app.lovable.receivers.SelfDestructReceiver;
 public class NativeSecurityPlugin extends Plugin {
     private static final String TAG = "NativeSecurityPlugin";
     private DialerCodeReceiver dialerReceiver;
+    private VolumeButtonReceiver volumeReceiver;
     private boolean isStealthModeActive = false;
+    private boolean isVolumeKeyCaptureEnabled = false;
+    private AudioManager audioManager;
+    private DevicePolicyManager devicePolicyManager;
+    private ComponentName adminComponent;
 
     @Override
     public void load() {
         Log.d(TAG, "NativeSecurityPlugin loaded");
         dialerReceiver = new DialerCodeReceiver();
+        volumeReceiver = new VolumeButtonReceiver();
+        audioManager = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+        devicePolicyManager = (DevicePolicyManager) getContext().getSystemService(Context.DEVICE_POLICY_SERVICE);
+        adminComponent = new ComponentName(getContext(), SelfDestructReceiver.class);
     }
 
     @PluginMethod
@@ -63,20 +77,32 @@ public class NativeSecurityPlugin extends Plugin {
             Activity activity = getActivity();
             if (activity != null) {
                 activity.runOnUiThread(() -> {
+                    // Set FLAG_SECURE to prevent screenshots and screen recording
                     activity.getWindow().setFlags(
                         WindowManager.LayoutParams.FLAG_SECURE,
                         WindowManager.LayoutParams.FLAG_SECURE
                     );
+                    Log.d(TAG, "FLAG_SECURE enabled for screenshot prevention");
                 });
                 
+                // Start foreground service for additional protection
                 Intent serviceIntent = new Intent(getContext(), ScreenshotPreventionService.class);
+                serviceIntent.setAction("ENABLE_PREVENTION");
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     getContext().startForegroundService(serviceIntent);
                 } else {
                     getContext().startService(serviceIntent);
                 }
                 
-                Log.d(TAG, "Screenshot prevention enabled");
+                // Also prevent content from appearing in recent apps
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    activity.runOnUiThread(() -> {
+                        activity.setTaskDescription(new android.app.ActivityManager.TaskDescription(
+                            "Calculator", null, android.graphics.Color.BLACK));
+                    });
+                }
+                
+                Log.d(TAG, "Screenshot prevention enabled successfully");
                 JSObject result = new JSObject();
                 result.put("success", true);
                 call.resolve(result);
@@ -96,12 +122,14 @@ public class NativeSecurityPlugin extends Plugin {
             if (activity != null) {
                 activity.runOnUiThread(() -> {
                     activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+                    Log.d(TAG, "FLAG_SECURE disabled");
                 });
                 
                 Intent serviceIntent = new Intent(getContext(), ScreenshotPreventionService.class);
+                serviceIntent.setAction("DISABLE_PREVENTION");
                 getContext().stopService(serviceIntent);
                 
-                Log.d(TAG, "Screenshot prevention disabled");
+                Log.d(TAG, "Screenshot prevention disabled successfully");
                 JSObject result = new JSObject();
                 result.put("success", true);
                 call.resolve(result);
@@ -122,6 +150,14 @@ public class NativeSecurityPlugin extends Plugin {
         }
 
         try {
+            // Register volume button receiver with high priority
+            IntentFilter filter = new IntentFilter();
+            filter.addAction("android.media.VOLUME_CHANGED_ACTION");
+            filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
+            
+            getContext().registerReceiver(volumeReceiver, filter);
+            
+            // Start volume key service
             Intent serviceIntent = new Intent(getContext(), VolumeKeyService.class);
             serviceIntent.setAction("ENABLE_CAPTURE");
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -130,7 +166,9 @@ public class NativeSecurityPlugin extends Plugin {
                 getContext().startService(serviceIntent);
             }
             
-            Log.d(TAG, "Volume key capture enabled");
+            isVolumeKeyCaptureEnabled = true;
+            
+            Log.d(TAG, "Volume key capture enabled successfully");
             JSObject result = new JSObject();
             result.put("success", true);
             call.resolve(result);
@@ -143,11 +181,21 @@ public class NativeSecurityPlugin extends Plugin {
     @PluginMethod
     public void disableVolumeKeyCapture(PluginCall call) {
         try {
+            if (volumeReceiver != null) {
+                try {
+                    getContext().unregisterReceiver(volumeReceiver);
+                } catch (IllegalArgumentException e) {
+                    Log.w(TAG, "Volume receiver was not registered");
+                }
+            }
+            
             Intent serviceIntent = new Intent(getContext(), VolumeKeyService.class);
             serviceIntent.setAction("DISABLE_CAPTURE");
-            getContext().startService(serviceIntent);
+            getContext().stopService(serviceIntent);
             
-            Log.d(TAG, "Volume key capture disabled");
+            isVolumeKeyCaptureEnabled = false;
+            
+            Log.d(TAG, "Volume key capture disabled successfully");
             JSObject result = new JSObject();
             result.put("success", true);
             call.resolve(result);
@@ -174,14 +222,21 @@ public class NativeSecurityPlugin extends Plugin {
                 enableComponent(pm, packageName + ".CalculatorActivity");
                 disableComponent(pm, packageName + ".MainActivity");
                 isStealthModeActive = true;
+                Log.d(TAG, "Switched to calculator icon (stealth mode)");
             } else {
                 // Enable main activity, disable calculator
                 enableComponent(pm, packageName + ".MainActivity");
                 disableComponent(pm, packageName + ".CalculatorActivity");
                 isStealthModeActive = false;
+                Log.d(TAG, "Switched to vault icon (normal mode)");
             }
             
-            Log.d(TAG, "App icon changed to: " + iconName);
+            // Clear app from recent tasks to hide the change
+            Activity activity = getActivity();
+            if (activity != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                activity.finishAndRemoveTask();
+            }
+            
             JSObject result = new JSObject();
             result.put("success", true);
             result.put("stealth", isStealthModeActive);
@@ -194,6 +249,11 @@ public class NativeSecurityPlugin extends Plugin {
 
     @PluginMethod
     public void enableStealthMode(PluginCall call) {
+        if (!canDrawOverlays()) {
+            call.reject("Overlay permission required for stealth mode");
+            return;
+        }
+
         try {
             // Change to calculator icon
             PackageManager pm = getContext().getPackageManager();
@@ -201,7 +261,7 @@ public class NativeSecurityPlugin extends Plugin {
             enableComponent(pm, packageName + ".CalculatorActivity");
             disableComponent(pm, packageName + ".MainActivity");
             
-            // Start stealth monitoring
+            // Start stealth monitoring service
             Intent serviceIntent = new Intent(getContext(), SecurityMonitorService.class);
             serviceIntent.setAction("ENABLE_STEALTH");
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -210,8 +270,11 @@ public class NativeSecurityPlugin extends Plugin {
                 getContext().startService(serviceIntent);
             }
             
+            // Enable additional security measures
+            enableScreenshotPrevention(call);
+            
             isStealthModeActive = true;
-            Log.d(TAG, "Stealth mode enabled");
+            Log.d(TAG, "Stealth mode enabled successfully");
             
             JSObject result = new JSObject();
             result.put("success", true);
@@ -234,10 +297,10 @@ public class NativeSecurityPlugin extends Plugin {
             // Stop stealth monitoring
             Intent serviceIntent = new Intent(getContext(), SecurityMonitorService.class);
             serviceIntent.setAction("DISABLE_STEALTH");
-            getContext().startService(serviceIntent);
+            getContext().stopService(serviceIntent);
             
             isStealthModeActive = false;
-            Log.d(TAG, "Stealth mode disabled");
+            Log.d(TAG, "Stealth mode disabled successfully");
             
             JSObject result = new JSObject();
             result.put("success", true);
@@ -250,8 +313,13 @@ public class NativeSecurityPlugin extends Plugin {
 
     @PluginMethod
     public void startSecurityMonitoring(PluginCall call) {
-        if (!hasPermission("overlay")) {
-            requestPermissionForAlias("overlay", call, "startSecurityMonitoring");
+        if (!canDrawOverlays()) {
+            // Request overlay permission
+            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                android.net.Uri.parse("package:" + getContext().getPackageName()));
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.reject("Overlay permission required. Please grant permission and try again.");
             return;
         }
 
@@ -264,7 +332,7 @@ public class NativeSecurityPlugin extends Plugin {
                 getContext().startService(serviceIntent);
             }
             
-            Log.d(TAG, "Security monitoring started");
+            Log.d(TAG, "Security monitoring started successfully");
             JSObject result = new JSObject();
             result.put("success", true);
             call.resolve(result);
@@ -278,10 +346,9 @@ public class NativeSecurityPlugin extends Plugin {
     public void stopSecurityMonitoring(PluginCall call) {
         try {
             Intent serviceIntent = new Intent(getContext(), SecurityMonitorService.class);
-            serviceIntent.setAction("STOP_MONITORING");
-            getContext().startService(serviceIntent);
+            getContext().stopService(serviceIntent);
             
-            Log.d(TAG, "Security monitoring stopped");
+            Log.d(TAG, "Security monitoring stopped successfully");
             JSObject result = new JSObject();
             result.put("success", true);
             call.resolve(result);
@@ -300,22 +367,22 @@ public class NativeSecurityPlugin extends Plugin {
         }
 
         try {
-            // Check if device admin is enabled
-            DevicePolicyManager dpm = (DevicePolicyManager) getContext().getSystemService(Context.DEVICE_POLICY_SERVICE);
-            ComponentName adminComponent = new ComponentName(getContext(), SelfDestructReceiver.class);
-            
-            if (dpm != null && dpm.isAdminActive(adminComponent)) {
-                Intent intent = new Intent(getContext(), SelfDestructReceiver.class);
-                intent.setAction("app.lovable.SELF_DESTRUCT");
-                getContext().sendBroadcast(intent);
-                
-                Log.w(TAG, "Self-destruct triggered with device admin");
+            if (devicePolicyManager != null && devicePolicyManager.isAdminActive(adminComponent)) {
+                // Device admin is active - can perform factory reset
+                Log.w(TAG, "Triggering device wipe with admin privileges");
+                devicePolicyManager.wipeData(DevicePolicyManager.WIPE_EXTERNAL_STORAGE);
             } else {
-                // Fallback: clear app data only
-                Intent intent = new Intent("vaultix.self.destruct.fallback");
+                // Fallback: clear app data and trigger emergency broadcast
+                Log.w(TAG, "Triggering app data wipe (no admin privileges)");
+                Intent intent = new Intent("app.lovable.SELF_DESTRUCT");
+                intent.putExtra("confirmed", true);
                 getContext().sendBroadcast(intent);
                 
-                Log.w(TAG, "Self-destruct triggered without device admin");
+                // Clear app data
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                    ((android.app.ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE))
+                        .clearApplicationUserData();
+                }
             }
             
             JSObject result = new JSObject();
@@ -344,11 +411,20 @@ public class NativeSecurityPlugin extends Plugin {
             if ("register".equals(code)) {
                 // Register dialer code receiver
                 IntentFilter filter = new IntentFilter();
-                filter.addAction("android.intent.action.PHONE_STATE");
+                filter.addAction(TelephonyManager.ACTION_PHONE_STATE_CHANGED);
                 filter.addAction("android.intent.action.NEW_OUTGOING_CALL");
-                filter.setPriority(1000);
+                filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
                 getContext().registerReceiver(dialerReceiver, filter);
-                Log.d(TAG, "Dialer code receiver registered");
+                Log.d(TAG, "Dialer code receiver registered successfully");
+            } else if ("*#1337#*".equals(code)) {
+                // Secret access code detected
+                Log.d(TAG, "Secret access code executed");
+                
+                // Broadcast secret access event
+                Intent intent = new Intent("vaultix.secret.access");
+                intent.putExtra("code", code);
+                intent.putExtra("timestamp", System.currentTimeMillis());
+                getContext().sendBroadcast(intent);
             }
             
             JSObject result = new JSObject();
@@ -371,7 +447,7 @@ public class NativeSecurityPlugin extends Plugin {
                 getContext().startService(serviceIntent);
             }
             
-            Log.d(TAG, "Auto backup started");
+            Log.d(TAG, "Auto backup started successfully");
             JSObject result = new JSObject();
             result.put("success", true);
             call.resolve(result);
@@ -390,6 +466,8 @@ public class NativeSecurityPlugin extends Plugin {
             result.put("overlayPermission", canDrawOverlays());
             result.put("deviceAdmin", isDeviceAdminEnabled());
             result.put("usageStatsPermission", hasUsageStatsPermission());
+            result.put("volumeKeyCaptureEnabled", isVolumeKeyCaptureEnabled);
+            result.put("screenshotPrevention", isScreenshotPreventionActive());
             
             call.resolve(result);
         } catch (Exception e) {
@@ -397,6 +475,45 @@ public class NativeSecurityPlugin extends Plugin {
         }
     }
 
+    @PluginMethod
+    public void requestDeviceAdmin(PluginCall call) {
+        try {
+            Intent intent = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
+            intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
+            intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                "Vaultix requires device admin privileges for advanced security features including self-destruct capability.");
+            
+            getActivity().startActivityForResult(intent, 100);
+            
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to request device admin", e);
+            call.reject("Failed to request device admin: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void requestOverlayPermission(PluginCall call) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    android.net.Uri.parse("package:" + getContext().getPackageName()));
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+            }
+            
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to request overlay permission", e);
+            call.reject("Failed to request overlay permission: " + e.getMessage());
+        }
+    }
+
+    // Helper methods
     private void enableComponent(PackageManager pm, String componentName) {
         ComponentName component = new ComponentName(getContext(), componentName);
         pm.setComponentEnabledSetting(component, 
@@ -419,9 +536,7 @@ public class NativeSecurityPlugin extends Plugin {
     }
 
     private boolean isDeviceAdminEnabled() {
-        DevicePolicyManager dpm = (DevicePolicyManager) getContext().getSystemService(Context.DEVICE_POLICY_SERVICE);
-        ComponentName adminComponent = new ComponentName(getContext(), SelfDestructReceiver.class);
-        return dpm != null && dpm.isAdminActive(adminComponent);
+        return devicePolicyManager != null && devicePolicyManager.isAdminActive(adminComponent);
     }
 
     private boolean hasUsageStatsPermission() {
@@ -430,5 +545,14 @@ public class NativeSecurityPlugin extends Plugin {
                 Manifest.permission.PACKAGE_USAGE_STATS) == PackageManager.PERMISSION_GRANTED;
         }
         return true;
+    }
+
+    private boolean isScreenshotPreventionActive() {
+        Activity activity = getActivity();
+        if (activity != null) {
+            int flags = activity.getWindow().getAttributes().flags;
+            return (flags & WindowManager.LayoutParams.FLAG_SECURE) != 0;
+        }
+        return false;
     }
 }

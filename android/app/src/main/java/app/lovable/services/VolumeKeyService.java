@@ -1,42 +1,32 @@
 
 package app.lovable.services;
 
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.app.Service;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.media.AudioManager;
-import android.os.Build;
 import android.os.IBinder;
+import android.util.Log;
+import android.view.KeyEvent;
 
-import androidx.core.app.NotificationCompat;
-
-import app.lovable.R;
+import app.lovable.receivers.VolumeButtonReceiver;
 
 public class VolumeKeyService extends Service {
-    private static final String CHANNEL_ID = "volume_key_service_channel";
-    private static final int NOTIFICATION_ID = 1002;
+    private static final String TAG = "VolumeKeyService";
     
-    private VolumeKeyReceiver volumeReceiver;
+    private VolumeButtonReceiver volumeReceiver;
+    private AudioManager audioManager;
     private boolean isCaptureEnabled = false;
-
-    public VolumeKeyService() {}
-
-    public VolumeKeyService(Context context) {
-        volumeReceiver = new VolumeKeyReceiver();
-    }
-
+    
     @Override
     public void onCreate() {
         super.onCreate();
-        createNotificationChannel();
-        volumeReceiver = new VolumeKeyReceiver();
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        volumeReceiver = new VolumeButtonReceiver();
+        Log.d(TAG, "VolumeKeyService created");
     }
-
+    
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : null;
@@ -47,76 +37,53 @@ public class VolumeKeyService extends Service {
             disableVolumeKeyCapture();
         }
         
-        if (isCaptureEnabled) {
-            startForeground(NOTIFICATION_ID, createNotification());
-        }
-        
         return START_STICKY;
     }
-
+    
     @Override
     public IBinder onBind(Intent intent) {
         return null;
     }
-
+    
     @Override
     public void onDestroy() {
         super.onDestroy();
         disableVolumeKeyCapture();
+        Log.d(TAG, "VolumeKeyService destroyed");
     }
-
+    
     private void enableVolumeKeyCapture() {
-        if (!isCaptureEnabled) {
+        if (isCaptureEnabled) return;
+        
+        try {
+            // Register volume change receiver
             IntentFilter filter = new IntentFilter();
             filter.addAction("android.media.VOLUME_CHANGED_ACTION");
+            filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
+            
             registerReceiver(volumeReceiver, filter);
             isCaptureEnabled = true;
+            
+            Log.d(TAG, "Volume key capture enabled");
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to enable volume key capture", e);
         }
     }
-
+    
     private void disableVolumeKeyCapture() {
-        if (isCaptureEnabled) {
-            try {
+        if (!isCaptureEnabled) return;
+        
+        try {
+            if (volumeReceiver != null) {
                 unregisterReceiver(volumeReceiver);
-            } catch (IllegalArgumentException e) {
-                // Receiver not registered
             }
             isCaptureEnabled = false;
-        }
-    }
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID,
-                "Volume Key Service",
-                NotificationManager.IMPORTANCE_LOW
-            );
-            channel.setDescription("Monitors volume key presses for security");
             
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            manager.createNotificationChannel(channel);
-        }
-    }
-
-    private Notification createNotification() {
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Vaultix Volume Monitor")
-            .setContentText("Volume key monitoring active")
-            .setSmallIcon(R.drawable.ic_volume)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .build();
-    }
-
-    private class VolumeKeyReceiver extends BroadcastReceiver {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if ("android.media.VOLUME_CHANGED_ACTION".equals(intent.getAction())) {
-                // Send event to JavaScript layer
-                Intent eventIntent = new Intent("vaultix.volume.key.pressed");
-                context.sendBroadcast(eventIntent);
-            }
+            Log.d(TAG, "Volume key capture disabled");
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to disable volume key capture", e);
         }
     }
 }
