@@ -5,7 +5,6 @@ import CryptoJS from 'crypto-js';
 import { RecycleBinService, DeletedFile } from '@/services/RecycleBinService';
 import { FileViewerService } from '@/services/FileViewerService';
 import { DuplicateDetectionService, DuplicateGroup } from '@/services/DuplicateDetectionService';
-import { StorageService } from '@/services/StorageService';
 
 export interface VaultFile {
   id: string;
@@ -46,7 +45,7 @@ interface VaultContextType {
   toggleFavorite: (fileId: string) => Promise<void>;
   addTag: (fileId: string, tag: string) => Promise<void>;
   removeTag: (fileId: string, tag: string) => Promise<void>;
-  getStorageUsage: () => Promise<{ used: number; total: number; available: number }>;
+  getStorageUsage: () => { used: number; total: number };
   setCurrentFolder: (folderId: string | null) => void;
   toggleFileSelection: (fileId: string) => void;
   selectAllFiles: () => void;
@@ -60,7 +59,6 @@ interface VaultContextType {
   emptyRecycleBin: () => Promise<void>;
   findDuplicates: () => Promise<DuplicateGroup[]>;
   cleanupDuplicates: (duplicateGroups: DuplicateGroup[]) => Promise<void>;
-  cleanupStorage: () => Promise<number>;
   loading: boolean;
 }
 
@@ -80,8 +78,6 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-
-  const storageService = StorageService.getInstance();
 
   useEffect(() => {
     loadVaultData();
@@ -269,22 +265,10 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await saveFiles(updatedFiles);
   };
 
-  const getStorageUsage = async () => {
-    try {
-      return await storageService.getRealStorageInfo();
-    } catch (error) {
-      console.error('Error getting storage usage:', error);
-      return { used: 0, total: 8 * 1024 * 1024 * 1024, available: 8 * 1024 * 1024 * 1024 };
-    }
-  };
-
-  const cleanupStorage = async (): Promise<number> => {
-    try {
-      return await storageService.cleanupTempFiles();
-    } catch (error) {
-      console.error('Error cleaning up storage:', error);
-      return 0;
-    }
+  const getStorageUsage = () => {
+    const used = files.reduce((total, file) => total + file.size, 0);
+    const total = 100 * 1024 * 1024; // 100MB limit for demo
+    return { used, total };
   };
 
   const toggleFileSelection = (fileId: string) => {
@@ -416,7 +400,6 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       emptyRecycleBin,
       findDuplicates,
       cleanupDuplicates,
-      cleanupStorage,
       loading,
     }}>
       {children}
