@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -45,7 +44,8 @@ export default function APIConfiguration() {
       await driveService.loadConfig();
       
       setAIConfig(aiService.getConfig());
-      setDriveConfig(driveService.getConfig());
+      const driveConfigData = await driveService.getConfig();
+      setDriveConfig(driveConfigData);
     } catch (error) {
       console.error('Failed to load API configs:', error);
       toast({
@@ -81,7 +81,7 @@ export default function APIConfiguration() {
   const saveDriveConfig = async () => {
     setIsSaving(true);
     try {
-      await driveService.saveConfig(driveConfig);
+      await driveService.setConfig(driveConfig);
       toast({
         title: "Settings Saved",
         description: "Google Drive configuration has been saved",
@@ -431,7 +431,7 @@ export default function APIConfiguration() {
                   </p>
                 </div>
                 <Switch
-                  checked={driveConfig.enabled}
+                  checked={driveConfig.enabled || false}
                   onCheckedChange={(checked) => setDriveConfig(prev => ({ ...prev, enabled: checked }))}
                 />
               </div>

@@ -99,11 +99,10 @@ export class CameraService {
     return {
       id: fileId,
       name: fileName,
-      type: 'image' as const,
+      type: 'image',
       size: metadata.size,
       dateAdded: timestamp,
       tags: ['camera', 'photo'],
-      content: photo.dataUrl || '',
       metadata,
       thumbnail: await this.generateThumbnail(photo.dataUrl || ''),
       path: `secure_photos/${fileName}`

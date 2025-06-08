@@ -62,18 +62,20 @@ const VoiceRecorder = () => {
         clearInterval(timerRef.current);
       }
 
-      // Convert VaultFile back to Blob for preview
-      const binaryString = atob(vaultFile.content);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+      // Convert VaultFile back to Blob for preview using the stored base64 data
+      if (vaultFile.path) {
+        const binaryString = atob(vaultFile.path);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: 'audio/webm' });
+        setAudioBlob(blob);
       }
-      const blob = new Blob([bytes], { type: 'audio/webm' });
-      setAudioBlob(blob);
 
       // Auto-transcribe if enabled
-      if (autoTranscribe) {
-        await transcribeRecording(vaultFile.content);
+      if (autoTranscribe && vaultFile.path) {
+        await transcribeRecording(vaultFile.path);
       }
 
       // Save to vault
@@ -206,8 +208,10 @@ const VoiceRecorder = () => {
   const transcribeAudioBlob = async () => {
     if (!audioBlob || !currentVaultFile) return;
     
-    // Use the stored VaultFile content for transcription
-    await transcribeRecording(currentVaultFile.content);
+    // Use the stored VaultFile path data for transcription
+    if (currentVaultFile.path) {
+      await transcribeRecording(currentVaultFile.path);
+    }
   };
 
   return (

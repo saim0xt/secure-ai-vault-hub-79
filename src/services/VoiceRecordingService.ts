@@ -123,12 +123,11 @@ export class VoiceRecordingService {
     return {
       id: fileId,
       name: fileName,
-      type: 'audio' as const,
+      type: 'audio',
       size: blob.size,
       dateAdded: timestamp,
       tags: ['voice', 'recording'],
-      content: base64,
-      path: `secure_recordings/${fileName}`,
+      path: base64,
       metadata: {
         duration: await this.calculateDuration(blob),
         format: 'webm',

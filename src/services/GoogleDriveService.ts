@@ -1,9 +1,9 @@
-
 import { Preferences } from '@capacitor/preferences';
 
 export interface GoogleDriveConfig {
   clientId: string;
   apiKey: string;
+  enabled?: boolean;
 }
 
 export interface GoogleDriveFile {
@@ -33,7 +33,14 @@ export class GoogleDriveService {
     await this.saveConfig();
   }
 
-  private async saveConfig(): Promise<void> {
+  async getConfig(): Promise<GoogleDriveConfig> {
+    if (!this.config) {
+      await this.loadConfig();
+    }
+    return this.config || { clientId: '', apiKey: '', enabled: false };
+  }
+
+  public async saveConfig(): Promise<void> {
     if (this.config) {
       await Preferences.set({
         key: 'google_drive_config',
@@ -42,7 +49,7 @@ export class GoogleDriveService {
     }
   }
 
-  private async loadConfig(): Promise<void> {
+  public async loadConfig(): Promise<void> {
     try {
       const { value } = await Preferences.get({ key: 'google_drive_config' });
       if (value) {
@@ -58,15 +65,18 @@ export class GoogleDriveService {
     await this.loadStoredTokens();
   }
 
-  private async loadStoredTokens(): Promise<void> {
+  public async loadStoredTokens(): Promise<boolean> {
     try {
       const { value: accessToken } = await Preferences.get({ key: 'google_drive_access_token' });
       const { value: refreshToken } = await Preferences.get({ key: 'google_drive_refresh_token' });
       
       if (accessToken) this.accessToken = accessToken;
       if (refreshToken) this.refreshToken = refreshToken;
+      
+      return !!(accessToken && refreshToken);
     } catch (error) {
       console.error('Failed to load stored tokens:', error);
+      return false;
     }
   }
 
