@@ -61,7 +61,7 @@ const VoiceRecorder = () => {
       }
 
       // Convert VaultFile back to Blob for preview
-      const binaryString = atob(vaultFile.data);
+      const binaryString = atob(vaultFile.content);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
@@ -71,7 +71,7 @@ const VoiceRecorder = () => {
 
       // Auto-transcribe if enabled
       if (autoTranscribe) {
-        await transcribeRecording(vaultFile.data);
+        await transcribeRecording(vaultFile.content);
       }
 
       // Save to vault

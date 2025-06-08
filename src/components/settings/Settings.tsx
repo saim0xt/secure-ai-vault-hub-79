@@ -14,7 +14,7 @@ import { Preferences } from '@capacitor/preferences';
 import { PermissionsService } from '../../services/PermissionsService';
 import { BiometricService } from '../../services/BiometricService';
 import { GoogleDriveService } from '../../services/GoogleDriveService';
-import { AIProcessingService } from '../../services/AIProcessingService';
+import { AIAPIService } from '../../services/AIAPIService';
 
 interface SettingsData {
   biometricEnabled: boolean;
@@ -27,6 +27,7 @@ interface SettingsData {
   screenshotPrevention: boolean;
   openAIKey: string;
   googleCloudKey: string;
+  elevenLabsKey: string;
   googleDriveClientId: string;
   googleDriveAPIKey: string;
 }
@@ -45,6 +46,7 @@ const Settings = () => {
     screenshotPrevention: true,
     openAIKey: '',
     googleCloudKey: '',
+    elevenLabsKey: '',
     googleDriveClientId: '',
     googleDriveAPIKey: ''
   });
@@ -89,19 +91,20 @@ const Settings = () => {
       });
       
       // Save API keys to AI service
-      if (newSettings.openAIKey || newSettings.googleCloudKey) {
-        await AIProcessingService.getInstance().setAPIKeys(
-          updatedSettings.openAIKey,
-          updatedSettings.googleCloudKey
-        );
+      if (newSettings.openAIKey || newSettings.googleCloudKey || newSettings.elevenLabsKey) {
+        await AIAPIService.getInstance().configure({
+          openAIKey: updatedSettings.openAIKey,
+          googleCloudKey: updatedSettings.googleCloudKey,
+          elevenLabsKey: updatedSettings.elevenLabsKey
+        });
       }
 
       // Configure Google Drive if keys provided
       if (newSettings.googleDriveClientId || newSettings.googleDriveAPIKey) {
-        await GoogleDriveService.getInstance().configure(
-          updatedSettings.googleDriveClientId,
-          updatedSettings.googleDriveAPIKey
-        );
+        await GoogleDriveService.getInstance().initialize({
+          clientId: updatedSettings.googleDriveClientId,
+          apiKey: updatedSettings.googleDriveAPIKey
+        });
       }
 
       toast({
@@ -344,6 +347,20 @@ const Settings = () => {
               />
               <p className="text-xs text-muted-foreground">
                 Required for voice transcription and advanced image processing
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="elevenlabs-key">ElevenLabs API Key</Label>
+              <Input
+                id="elevenlabs-key"
+                type="password"
+                placeholder="..."
+                value={settings.elevenLabsKey}
+                onChange={(e) => handleInputChange('elevenLabsKey', e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Required for text-to-speech generation
               </p>
             </div>
           </CardContent>

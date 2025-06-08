@@ -127,10 +127,9 @@ export class VoiceRecordingService {
       type: 'audio' as const,
       size: blob.size,
       dateAdded: timestamp,
-      encrypted: true,
       category: 'audio',
       tags: ['voice', 'recording'],
-      data: base64,
+      content: base64,
       path: `secure_recordings/${fileName}`,
       metadata: {
         duration: await this.calculateDuration(blob),
