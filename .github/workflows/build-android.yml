@@ -24,9 +24,7 @@ jobs:
     - name: Install dependencies
       run: npm ci
     
-    - name: Build web application
-      run: npm run build
-    
+     
     - name: Setup Java JDK
       uses: actions/setup-java@v4
       with:
