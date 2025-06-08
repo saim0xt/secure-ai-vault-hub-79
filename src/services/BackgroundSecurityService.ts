@@ -2,6 +2,8 @@ import { App } from '@capacitor/app';
 import { Device } from '@capacitor/device';
 import { Preferences } from '@capacitor/preferences';
 import { PushNotificationService } from './PushNotificationService';
+import { RealNativeSecurityService } from './RealNativeSecurityService';
+import { RealNativeNotificationService } from './RealNativeNotificationService';
 
 export interface SecurityEvent {
   id: string;
@@ -12,7 +14,7 @@ export interface SecurityEvent {
 }
 
 export interface SecuritySettings {
-  autoLockDelay: number; // milliseconds
+  autoLockDelay: number;
   backgroundMonitoring: boolean;
   tamperDetection: boolean;
   failedAttemptLimit: number;
@@ -24,18 +26,16 @@ export class BackgroundSecurityService {
   private static instance: BackgroundSecurityService;
   private isInitialized = false;
   private securitySettings: SecuritySettings = {
-    autoLockDelay: 30000, // 30 seconds
+    autoLockDelay: 300000, // 5 minutes
     backgroundMonitoring: true,
     tamperDetection: true,
-    failedAttemptLimit: 5,
+    failedAttemptLimit: 3,
     emergencyWipeEnabled: false,
     alertsEnabled: true
   };
-  private failedAttempts = 0;
-  private lastActivity = Date.now();
-  private lockTimer: NodeJS.Timeout | null = null;
-  private pushService = PushNotificationService.getInstance();
-  private isLocked = false;
+  private monitoringInterval: NodeJS.Timeout | null = null;
+  private securityService = RealNativeSecurityService.getInstance();
+  private notificationService = RealNativeNotificationService.getInstance();
 
   static getInstance(): BackgroundSecurityService {
     if (!BackgroundSecurityService.instance) {
@@ -50,346 +50,204 @@ export class BackgroundSecurityService {
     try {
       await this.loadSettings();
       await this.setupAppStateListeners();
-      await this.setupDeviceListeners();
+      await this.securityService.initialize();
       
+      if (this.securitySettings.backgroundMonitoring) {
+        await this.startMonitoring();
+      }
+
       this.isInitialized = true;
       console.log('Background security service initialized');
     } catch (error) {
       console.error('Failed to initialize background security service:', error);
+      throw error;
     }
   }
 
   private async setupAppStateListeners(): Promise<void> {
-    try {
-      App.addListener('appStateChange', (state) => {
-        if (state.isActive) {
-          this.onAppForeground();
-        } else {
-          this.onAppBackground();
-        }
-      });
-
-      App.addListener('pause', () => {
-        this.onAppBackground();
-      });
-
-      App.addListener('resume', () => {
-        this.onAppForeground();
-      });
-
-      console.log('App state listeners setup');
-    } catch (error) {
-      console.error('Failed to setup app state listeners:', error);
-    }
-  }
-
-  private async setupDeviceListeners(): Promise<void> {
-    try {
-      // Listen for device info changes (potential tampering)
-      const deviceInfo = await Device.getInfo();
-      await this.storeDeviceFingerprint(deviceInfo);
-
-      console.log('Device listeners setup');
-    } catch (error) {
-      console.error('Failed to setup device listeners:', error);
-    }
-  }
-
-  private async onAppBackground(): Promise<void> {
-    if (!this.securitySettings.backgroundMonitoring) return;
-
-    try {
-      // Record security event
-      await this.recordSecurityEvent({
-        type: 'app_backgrounded',
-        details: { timestamp: Date.now() },
-        severity: 'low'
-      });
-
-      // Start auto-lock timer if not already locked
-      if (!this.isLocked) {
-        this.startAutoLockTimer();
+    // Listen for app state changes
+    App.addListener('appStateChange', async (state) => {
+      if (state.isActive === false) {
+        await this.handleAppBackgrounded();
+      } else {
+        await this.handleAppForegrounded();
       }
-
-      // Enable additional security monitoring
-      await this.enableBackgroundMonitoring();
-
-      console.log('App backgrounded - security monitoring active');
-    } catch (error) {
-      console.error('Failed to handle app background:', error);
-    }
-  }
-
-  private async onAppForeground(): Promise<void> {
-    try {
-      this.lastActivity = Date.now();
-      this.clearAutoLockTimer();
-
-      // Check if app was locked while in background
-      if (this.isLocked) {
-        this.triggerAuthenticationChallenge();
-      }
-
-      // Disable background monitoring
-      await this.disableBackgroundMonitoring();
-
-      // Check for tampering
-      if (this.securitySettings.tamperDetection) {
-        await this.checkForTampering();
-      }
-
-      console.log('App foregrounded - security check complete');
-    } catch (error) {
-      console.error('Failed to handle app foreground:', error);
-    }
-  }
-
-  private startAutoLockTimer(): void {
-    this.clearAutoLockTimer();
-    
-    this.lockTimer = setTimeout(async () => {
-      await this.triggerAutoLock();
-    }, this.securitySettings.autoLockDelay);
-  }
-
-  private clearAutoLockTimer(): void {
-    if (this.lockTimer) {
-      clearTimeout(this.lockTimer);
-      this.lockTimer = null;
-    }
-  }
-
-  private async triggerAutoLock(): Promise<void> {
-    try {
-      this.isLocked = true;
-      
-      // Record security event
-      await this.recordSecurityEvent({
-        type: 'device_lock',
-        details: { reason: 'auto_lock', delay: this.securitySettings.autoLockDelay },
-        severity: 'medium'
-      });
-
-      // Clear sensitive data from memory
-      await this.clearSensitiveData();
-
-      // Navigate to lock screen
-      this.triggerAuthenticationChallenge();
-
-      console.log('Auto-lock triggered');
-    } catch (error) {
-      console.error('Failed to trigger auto-lock:', error);
-    }
-  }
-
-  private triggerAuthenticationChallenge(): void {
-    // Trigger authentication required event
-    const event = new CustomEvent('authentication_required', {
-      detail: { reason: 'auto_lock' }
     });
-    window.dispatchEvent(event);
+
+    // Listen for device changes
+    Device.addListener('deviceReady', async () => {
+      await this.handleDeviceReady();
+    });
   }
 
-  private async clearSensitiveData(): Promise<void> {
-    try {
-      // Clear temporary data
-      sessionStorage.clear();
+  private async handleAppBackgrounded(): Promise<void> {
+    const event: SecurityEvent = {
+      id: `bg_${Date.now()}`,
+      type: 'app_backgrounded',
+      timestamp: new Date().toISOString(),
+      details: { reason: 'app_backgrounded' },
+      severity: 'low'
+    };
+
+    await this.logSecurityEvent(event);
+
+    // Enable screenshot prevention when app is backgrounded
+    if (this.securitySettings.backgroundMonitoring) {
+      await this.securityService.enableScreenshotPrevention();
+    }
+  }
+
+  private async handleAppForegrounded(): Promise<void> {
+    // Verify app integrity when returning to foreground
+    if (this.securitySettings.tamperDetection) {
+      const tamperResult = await this.securityService.detectTamperAttempts();
       
-      // Remove sensitive items from localStorage (keep settings)
-      const keysToRemove = ['vaultix_temp_data', 'vaultix_cache'];
-      keysToRemove.forEach(key => localStorage.removeItem(key));
-
-      console.log('Sensitive data cleared');
-    } catch (error) {
-      console.error('Failed to clear sensitive data:', error);
-    }
-  }
-
-  private async enableBackgroundMonitoring(): Promise<void> {
-    try {
-      // Use available web APIs for background monitoring
-      console.log('Background monitoring enabled (web mode)');
-    } catch (error) {
-      console.error('Failed to enable background monitoring:', error);
-    }
-  }
-
-  private async disableBackgroundMonitoring(): Promise<void> {
-    try {
-      // Stop background monitoring when app is active
-      console.log('Background monitoring disabled');
-    } catch (error) {
-      console.error('Failed to disable background monitoring:', error);
-    }
-  }
-
-  private async checkForTampering(): Promise<void> {
-    try {
-      const currentDevice = await Device.getInfo();
-      const storedFingerprint = await this.getStoredDeviceFingerprint();
-
-      if (storedFingerprint && this.hasDeviceChanged(currentDevice, storedFingerprint)) {
-        await this.recordSecurityEvent({
+      if (tamperResult.tampering) {
+        const event: SecurityEvent = {
+          id: `tamper_${Date.now()}`,
           type: 'tamper_detected',
-          details: { 
-            current: currentDevice, 
-            stored: storedFingerprint,
-            changes: this.getDeviceChanges(currentDevice, storedFingerprint)
-          },
+          timestamp: new Date().toISOString(),
+          details: tamperResult.details,
           severity: 'critical'
-        });
+        };
 
-        if (this.securitySettings.alertsEnabled) {
-          await this.pushService.sendSecurityAlert(
-            'Device Tampering Detected',
-            'Your device configuration has changed. Please verify your security.'
+        await this.logSecurityEvent(event);
+        await this.handleSecurityThreat(event);
+      }
+    }
+  }
+
+  private async handleDeviceReady(): Promise<void> {
+    // Device is ready, start monitoring
+    if (this.securitySettings.backgroundMonitoring) {
+      await this.startMonitoring();
+    }
+  }
+
+  private async startMonitoring(): Promise<void> {
+    if (this.monitoringInterval) return;
+
+    await this.securityService.startRealTimeMonitoring();
+
+    this.monitoringInterval = setInterval(async () => {
+      await this.performSecurityCheck();
+    }, 30000); // Check every 30 seconds
+
+    console.log('Background security monitoring started');
+  }
+
+  private async stopMonitoring(): Promise<void> {
+    if (this.monitoringInterval) {
+      clearInterval(this.monitoringInterval);
+      this.monitoringInterval = null;
+    }
+
+    await this.securityService.stopRealTimeMonitoring();
+    console.log('Background security monitoring stopped');
+  }
+
+  private async performSecurityCheck(): Promise<void> {
+    try {
+      if (!this.securitySettings.tamperDetection) return;
+
+      const tamperResult = await this.securityService.detectTamperAttempts();
+      
+      if (tamperResult.tampering) {
+        const event: SecurityEvent = {
+          id: `check_${Date.now()}`,
+          type: 'tamper_detected',
+          timestamp: new Date().toISOString(),
+          details: tamperResult.details,
+          severity: 'high'
+        };
+
+        await this.logSecurityEvent(event);
+        await this.handleSecurityThreat(event);
+      }
+    } catch (error) {
+      console.error('Security check failed:', error);
+    }
+  }
+
+  private async handleSecurityThreat(event: SecurityEvent): Promise<void> {
+    console.warn('Security threat detected:', event);
+
+    if (this.securitySettings.alertsEnabled) {
+      // Send notification
+      await this.notificationService.showSecurityAlert(
+        'Security Threat Detected',
+        `${event.type}: ${event.details.reason || 'Unknown threat'}`,
+        'threat_detected'
+      );
+
+      // Capture intruder photo if available
+      try {
+        const photoPath = await this.securityService.captureIntruderPhoto();
+        if (photoPath) {
+          await this.notificationService.showSecurityAlert(
+            'Intruder Photo Captured',
+            'Security breach documented with photo evidence',
+            'photo_captured'
           );
         }
+      } catch (error) {
+        console.error('Failed to capture intruder photo:', error);
       }
+    }
 
-      // Update stored fingerprint
-      await this.storeDeviceFingerprint(currentDevice);
-    } catch (error) {
-      console.error('Failed to check for tampering:', error);
+    // Handle based on severity
+    switch (event.severity) {
+      case 'critical':
+        if (this.securitySettings.emergencyWipeEnabled) {
+          await this.triggerEmergencyWipe();
+        }
+        break;
+      case 'high':
+        await this.securityService.enableSecureMode();
+        break;
+      case 'medium':
+        // Increase monitoring frequency temporarily
+        break;
     }
   }
 
-  private hasDeviceChanged(current: any, stored: any): boolean {
-    return (
-      current.platform !== stored.platform ||
-      current.operatingSystem !== stored.operatingSystem ||
-      current.osVersion !== stored.osVersion ||
-      current.manufacturer !== stored.manufacturer ||
-      current.model !== stored.model
-    );
-  }
-
-  private getDeviceChanges(current: any, stored: any): string[] {
-    const changes = [];
-    if (current.platform !== stored.platform) changes.push('platform');
-    if (current.operatingSystem !== stored.operatingSystem) changes.push('OS');
-    if (current.osVersion !== stored.osVersion) changes.push('OS version');
-    if (current.manufacturer !== stored.manufacturer) changes.push('manufacturer');
-    if (current.model !== stored.model) changes.push('model');
-    return changes;
-  }
-
-  async recordSecurityEvent(event: Omit<SecurityEvent, 'id' | 'timestamp'>): Promise<void> {
-    try {
-      const securityEvent: SecurityEvent = {
-        id: `event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        timestamp: new Date().toISOString(),
-        ...event
-      };
-
-      // Store event
-      const events = await this.getSecurityEvents();
-      events.unshift(securityEvent);
-      
-      // Keep only last 1000 events
-      events.splice(1000);
-      
-      await Preferences.set({ 
-        key: 'vaultix_security_events', 
-        value: JSON.stringify(events) 
-      });
-
-      console.log('Security event recorded:', securityEvent);
-    } catch (error) {
-      console.error('Failed to record security event:', error);
-    }
-  }
-
-  async getSecurityEvents(): Promise<SecurityEvent[]> {
-    try {
-      const { value } = await Preferences.get({ key: 'vaultix_security_events' });
-      return value ? JSON.parse(value) : [];
-    } catch (error) {
-      console.error('Failed to get security events:', error);
-      return [];
-    }
-  }
-
-  async recordFailedAttempt(details: any): Promise<void> {
-    this.failedAttempts++;
+  private async triggerEmergencyWipe(): Promise<void> {
+    console.warn('Emergency wipe triggered');
     
-    await this.recordSecurityEvent({
-      type: 'failed_auth',
-      details: { ...details, attemptCount: this.failedAttempts },
-      severity: this.failedAttempts >= this.securitySettings.failedAttemptLimit ? 'critical' : 'medium'
-    });
-
-    if (this.failedAttempts >= this.securitySettings.failedAttemptLimit) {
-      await this.handleSecurityBreach();
-    }
-  }
-
-  private async handleSecurityBreach(): Promise<void> {
     try {
-      await this.recordSecurityEvent({
-        type: 'suspicious_activity',
-        details: { 
-          reason: 'failed_attempt_limit_exceeded',
-          attempts: this.failedAttempts 
-        },
-        severity: 'critical'
-      });
+      await this.notificationService.showSecurityAlert(
+        'EMERGENCY WIPE INITIATED',
+        'Critical security threat detected. Data wipe in progress.',
+        'emergency_wipe'
+      );
 
-      if (this.securitySettings.emergencyWipeEnabled) {
-        await this.emergencyWipe();
-      } else {
-        // Lock vault and require additional verification
-        this.isLocked = true;
-        await this.triggerAuthenticationChallenge();
-      }
-
-      if (this.securitySettings.alertsEnabled) {
-        await this.pushService.sendSecurityAlert(
-          'Security Breach Detected',
-          `${this.failedAttempts} failed authentication attempts detected.`
-        );
-      }
-    } catch (error) {
-      console.error('Failed to handle security breach:', error);
-    }
-  }
-
-  private async emergencyWipe(): Promise<void> {
-    try {
-      console.log('EMERGENCY WIPE TRIGGERED - This would delete all vault data');
+      await this.securityService.wipeSecureData();
       
-      // In a real implementation, this would securely delete all vault data
-      // For demonstration, we'll just clear local storage and redirect
-      localStorage.clear();
-      sessionStorage.clear();
-      
+      // Clear all app data
       await Preferences.clear();
       
-      window.location.href = '/auth?wiped=true';
+      // Redirect to auth screen
+      window.location.href = '/auth';
     } catch (error) {
-      console.error('Failed to perform emergency wipe:', error);
+      console.error('Emergency wipe failed:', error);
     }
   }
 
-  resetFailedAttempts(): void {
-    this.failedAttempts = 0;
-  }
-
-  updateActivity(): void {
-    this.lastActivity = Date.now();
-    this.clearAutoLockTimer();
-    
-    if (!this.isLocked) {
-      this.startAutoLockTimer();
-    }
-  }
-
-  async updateSettings(settings: Partial<SecuritySettings>): Promise<void> {
-    this.securitySettings = { ...this.securitySettings, ...settings };
+  async updateSettings(newSettings: Partial<SecuritySettings>): Promise<void> {
+    this.securitySettings = { ...this.securitySettings, ...newSettings };
     await this.saveSettings();
+
+    // Restart monitoring if settings changed
+    if (newSettings.backgroundMonitoring !== undefined) {
+      if (newSettings.backgroundMonitoring) {
+        await this.startMonitoring();
+      } else {
+        await this.stopMonitoring();
+      }
+    }
   }
 
-  getSettings(): SecuritySettings {
+  async getSettings(): Promise<SecuritySettings> {
     return { ...this.securitySettings };
   }
 
@@ -406,43 +264,51 @@ export class BackgroundSecurityService {
 
   private async saveSettings(): Promise<void> {
     try {
-      await Preferences.set({ 
-        key: 'vaultix_security_settings', 
-        value: JSON.stringify(this.securitySettings) 
+      await Preferences.set({
+        key: 'vaultix_security_settings',
+        value: JSON.stringify(this.securitySettings)
       });
     } catch (error) {
       console.error('Failed to save security settings:', error);
     }
   }
 
-  private async storeDeviceFingerprint(deviceInfo: any): Promise<void> {
+  private async logSecurityEvent(event: SecurityEvent): Promise<void> {
     try {
-      await Preferences.set({ 
-        key: 'vaultix_device_fingerprint', 
-        value: JSON.stringify(deviceInfo) 
+      const { value } = await Preferences.get({ key: 'vaultix_security_events' });
+      const events: SecurityEvent[] = value ? JSON.parse(value) : [];
+      
+      events.unshift(event);
+      
+      // Keep only last 100 events
+      if (events.length > 100) {
+        events.splice(100);
+      }
+      
+      await Preferences.set({
+        key: 'vaultix_security_events',
+        value: JSON.stringify(events)
       });
     } catch (error) {
-      console.error('Failed to store device fingerprint:', error);
+      console.error('Failed to log security event:', error);
     }
   }
 
-  private async getStoredDeviceFingerprint(): Promise<any | null> {
+  async getSecurityEvents(): Promise<SecurityEvent[]> {
     try {
-      const { value } = await Preferences.get({ key: 'vaultix_device_fingerprint' });
-      return value ? JSON.parse(value) : null;
+      const { value } = await Preferences.get({ key: 'vaultix_security_events' });
+      return value ? JSON.parse(value) : [];
     } catch (error) {
-      console.error('Failed to get stored device fingerprint:', error);
-      return null;
+      console.error('Failed to get security events:', error);
+      return [];
     }
   }
 
-  unlock(): void {
-    this.isLocked = false;
-    this.resetFailedAttempts();
-    this.updateActivity();
-  }
-
-  isVaultLocked(): boolean {
-    return this.isLocked;
+  async clearSecurityEvents(): Promise<void> {
+    try {
+      await Preferences.remove({ key: 'vaultix_security_events' });
+    } catch (error) {
+      console.error('Failed to clear security events:', error);
+    }
   }
 }

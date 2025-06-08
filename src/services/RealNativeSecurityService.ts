@@ -1,144 +1,73 @@
+
 import { registerPlugin } from '@capacitor/core';
-import { RealFileHidingService } from './RealFileHidingService';
-import { RealNativeNotificationService } from './RealNativeNotificationService';
 
 export interface NativeSecurityPlugin {
-  detectRootAccess(): Promise<{ isRooted: boolean; confidence: number; indicators: any }>;
-  detectEmulator(): Promise<{ isEmulator: boolean; confidence: number; indicators: any }>;
-  detectDebugging(): Promise<{ isDebugging: boolean; isDebugBuild: boolean; isDeveloperOptionsEnabled: boolean }>;
-  detectHooking(): Promise<{ xposedDetected: boolean; friddaDetected: boolean; substrateDetected: boolean }>;
-  verifyAppIntegrity(): Promise<{ signatureValid: boolean; installerValid: boolean; apkIntegrityValid: boolean }>;
-  analyzeNetworkSecurity(): Promise<{ isVpnActive: boolean; isProxyDetected: boolean; networkType: string; isSecureConnection: boolean; certificatePinningEnabled: boolean }>;
-  enableCertificatePinning(): Promise<{ enabled: boolean }>;
-  detectSuspiciousActivity(): Promise<{ unexpectedTraffic: boolean; dnsHijacking: boolean; mitm: boolean }>;
-  checkAllPermissions(): Promise<{ camera: boolean; microphone: boolean; location: boolean; storage: boolean; phone: boolean; overlay: boolean; deviceAdmin: boolean; usageStats: boolean }>;
-  requestAllPermissions(): Promise<{ granted: boolean }>;
-  requestSpecificPermission(options: { permission: string }): Promise<{ granted: boolean }>;
-  openAppSettings(): Promise<void>;
-  executeDialerCode(action: string): Promise<{ success: boolean }>;
-  enableStealthMode(): Promise<{ success: boolean }>;
-  disableStealthMode(): Promise<{ success: boolean }>;
-  triggerSelfDestruct(confirmCode: string): Promise<{ success: boolean }>;
+  initialize(): Promise<{ success: boolean }>;
+  checkPermissions(): Promise<{ 
+    camera: boolean; 
+    microphone: boolean; 
+    location: boolean; 
+    storage: boolean; 
+    phone: boolean; 
+    overlay: boolean; 
+    deviceAdmin: boolean; 
+    usageStats: boolean; 
+  }>;
+  requestAllPermissions(): Promise<{ success: boolean }>;
+  requestSpecificPermission(options: { permission: string }): Promise<{ success: boolean }>;
+  openAppSettings(): Promise<{ success: boolean }>;
+  enableScreenshotPrevention(): Promise<{ success: boolean }>;
+  disableScreenshotPrevention(): Promise<{ success: boolean }>;
+  enableAppHiding(options: { calculatorMode: boolean }): Promise<{ success: boolean }>;
+  disableAppHiding(): Promise<{ success: boolean }>;
+  startRealTimeMonitoring(): Promise<{ success: boolean }>;
+  stopRealTimeMonitoring(): Promise<{ success: boolean }>;
+  captureIntruderPhoto(): Promise<{ success: boolean; photoPath?: string }>;
+  detectTamperAttempts(): Promise<{ success: boolean; tampering: boolean; details: any }>;
+  enableSecureMode(): Promise<{ success: boolean }>;
+  disableSecureMode(): Promise<{ success: boolean }>;
+  wipeSecureData(): Promise<{ success: boolean }>;
 }
 
 export interface SecureStoragePlugin {
-  setItem(options: { key: string; value: string }): Promise<void>;
-  getItem(options: { key: string }): Promise<{ value: string | null }>;
-  removeItem(options: { key: string }): Promise<void>;
-  clear(): Promise<void>;
-  keys(): Promise<{ keys: string[] }>;
+  store(options: { key: string; value: string; encrypted: boolean }): Promise<{ success: boolean }>;
+  retrieve(options: { key: string; encrypted: boolean }): Promise<{ success: boolean; value?: string }>;
+  remove(options: { key: string }): Promise<{ success: boolean }>;
+  clear(): Promise<{ success: boolean }>;
 }
 
-const RealNativeSecurity = registerPlugin<NativeSecurityPlugin>('RealNativeSecurity', {
+const RealNativeSecurity = registerPlugin<NativeSecurityPlugin>('ProductionSecurity', {
   web: {
-    detectRootAccess: async () => ({ isRooted: false, confidence: 0.1, indicators: {} }),
-    detectEmulator: async () => ({ isEmulator: false, confidence: 0.05, indicators: {} }),
-    detectDebugging: async () => ({ isDebugging: false, isDebugBuild: false, isDeveloperOptionsEnabled: false }),
-    detectHooking: async () => ({ xposedDetected: false, friddaDetected: false, substrateDetected: false }),
-    verifyAppIntegrity: async () => ({ signatureValid: true, installerValid: true, apkIntegrityValid: true }),
-    analyzeNetworkSecurity: async () => ({ isVpnActive: false, isProxyDetected: false, networkType: 'wifi', isSecureConnection: true, certificatePinningEnabled: false }),
-    enableCertificatePinning: async () => ({ enabled: true }),
-    detectSuspiciousActivity: async () => ({ unexpectedTraffic: false, dnsHijacking: false, mitm: false }),
-    checkAllPermissions: async () => ({ camera: true, microphone: true, location: true, storage: true, phone: true, overlay: true, deviceAdmin: false, usageStats: false }),
-    requestAllPermissions: async () => ({ granted: true }),
-    requestSpecificPermission: async () => ({ granted: true }),
-    openAppSettings: async () => {},
-    executeDialerCode: async () => ({ success: true }),
-    enableStealthMode: async () => ({ success: true }),
-    disableStealthMode: async () => ({ success: true }),
-    triggerSelfDestruct: async () => ({ success: true })
-  }
-});
-
-const RealAdvancedTamperDetection = registerPlugin<NativeSecurityPlugin>('AdvancedTamperDetection', {
-  web: {
-    detectRootAccess: async () => ({ isRooted: false, confidence: 0.1, indicators: {} }),
-    detectEmulator: async () => ({ isEmulator: false, confidence: 0.05, indicators: {} }),
-    detectDebugging: async () => ({ isDebugging: false, isDebugBuild: false, isDeveloperOptionsEnabled: false }),
-    detectHooking: async () => ({ xposedDetected: false, friddaDetected: false, substrateDetected: false }),
-    verifyAppIntegrity: async () => ({ signatureValid: true, installerValid: true, apkIntegrityValid: true }),
-    analyzeNetworkSecurity: async () => ({ isVpnActive: false, isProxyDetected: false, networkType: 'wifi', isSecureConnection: true, certificatePinningEnabled: false }),
-    enableCertificatePinning: async () => ({ enabled: true }),
-    detectSuspiciousActivity: async () => ({ unexpectedTraffic: false, dnsHijacking: false, mitm: false }),
-    checkAllPermissions: async () => ({ camera: true, microphone: true, location: true, storage: true, phone: true, overlay: true, deviceAdmin: false, usageStats: false }),
-    requestAllPermissions: async () => ({ granted: true }),
-    requestSpecificPermission: async () => ({ granted: true }),
-    openAppSettings: async () => {},
-    executeDialerCode: async () => ({ success: true }),
-    enableStealthMode: async () => ({ success: true }),
-    disableStealthMode: async () => ({ success: true }),
-    triggerSelfDestruct: async () => ({ success: true })
-  }
-});
-
-const RealPermissions = registerPlugin<NativeSecurityPlugin>('RealPermissions', {
-  web: {
-    detectRootAccess: async () => ({ isRooted: false, confidence: 0.1, indicators: {} }),
-    detectEmulator: async () => ({ isEmulator: false, confidence: 0.05, indicators: {} }),
-    detectDebugging: async () => ({ isDebugging: false, isDebugBuild: false, isDeveloperOptionsEnabled: false }),
-    detectHooking: async () => ({ xposedDetected: false, friddaDetected: false, substrateDetected: false }),
-    verifyAppIntegrity: async () => ({ signatureValid: true, installerValid: true, apkIntegrityValid: true }),
-    analyzeNetworkSecurity: async () => ({ isVpnActive: false, isProxyDetected: false, networkType: 'wifi', isSecureConnection: true, certificatePinningEnabled: false }),
-    enableCertificatePinning: async () => ({ enabled: true }),
-    detectSuspiciousActivity: async () => ({ unexpectedTraffic: false, dnsHijacking: false, mitm: false }),
-    checkAllPermissions: async () => ({ camera: true, microphone: true, location: true, storage: true, phone: true, overlay: true, deviceAdmin: false, usageStats: false }),
-    requestAllPermissions: async () => ({ granted: true }),
-    requestSpecificPermission: async () => ({ granted: true }),
-    openAppSettings: async () => {},
-    executeDialerCode: async () => ({ success: true }),
-    enableStealthMode: async () => ({ success: true }),
-    disableStealthMode: async () => ({ success: true }),
-    triggerSelfDestruct: async () => ({ success: true })
-  }
-});
-
-const NetworkSecurity = registerPlugin<NativeSecurityPlugin>('NetworkSecurity', {
-  web: {
-    detectRootAccess: async () => ({ isRooted: false, confidence: 0.1, indicators: {} }),
-    detectEmulator: async () => ({ isEmulator: false, confidence: 0.05, indicators: {} }),
-    detectDebugging: async () => ({ isDebugging: false, isDebugBuild: false, isDeveloperOptionsEnabled: false }),
-    detectHooking: async () => ({ xposedDetected: false, friddaDetected: false, substrateDetected: false }),
-    verifyAppIntegrity: async () => ({ signatureValid: true, installerValid: true, apkIntegrityValid: true }),
-    analyzeNetworkSecurity: async () => ({ isVpnActive: false, isProxyDetected: false, networkType: 'wifi', isSecureConnection: true, certificatePinningEnabled: false }),
-    enableCertificatePinning: async () => ({ enabled: true }),
-    detectSuspiciousActivity: async () => ({ unexpectedTraffic: false, dnsHijacking: false, mitm: false }),
-    checkAllPermissions: async () => ({ camera: true, microphone: true, location: true, storage: true, phone: true, overlay: true, deviceAdmin: false, usageStats: false }),
-    requestAllPermissions: async () => ({ granted: true }),
-    requestSpecificPermission: async () => ({ granted: true }),
-    openAppSettings: async () => {},
-    executeDialerCode: async () => ({ success: true }),
-    enableStealthMode: async () => ({ success: true }),
-    disableStealthMode: async () => ({ success: true }),
-    triggerSelfDestruct: async () => ({ success: true })
-  }
-});
-
-const NativeSecurity = registerPlugin<NativeSecurityPlugin>('NativeSecurity', {
-  web: {
-    detectRootAccess: async () => ({ isRooted: false, confidence: 0.1, indicators: {} }),
-    detectEmulator: async () => ({ isEmulator: false, confidence: 0.05, indicators: {} }),
-    detectDebugging: async () => ({ isDebugging: false, isDebugBuild: false, isDeveloperOptionsEnabled: false }),
-    detectHooking: async () => ({ xposedDetected: false, friddaDetected: false, substrateDetected: false }),
-    verifyAppIntegrity: async () => ({ signatureValid: true, installerValid: true, apkIntegrityValid: true }),
-    analyzeNetworkSecurity: async () => ({ isVpnActive: false, isProxyDetected: false, networkType: 'wifi', isSecureConnection: true, certificatePinningEnabled: false }),
-    enableCertificatePinning: async () => ({ enabled: true }),
-    detectSuspiciousActivity: async () => ({ unexpectedTraffic: false, dnsHijacking: false, mitm: false }),
-    checkAllPermissions: async () => ({ camera: true, microphone: true, location: true, storage: true, phone: true, overlay: true, deviceAdmin: false, usageStats: false }),
-    requestAllPermissions: async () => ({ granted: true }),
-    requestSpecificPermission: async () => ({ granted: true }),
-    openAppSettings: async () => {},
-    executeDialerCode: async () => ({ success: true }),
-    enableStealthMode: async () => ({ success: true }),
-    disableStealthMode: async () => ({ success: true }),
-    triggerSelfDestruct: async () => ({ success: true })
+    initialize: async () => ({ success: true }),
+    checkPermissions: async () => ({
+      camera: false,
+      microphone: false,
+      location: false,
+      storage: false,
+      phone: false,
+      overlay: false,
+      deviceAdmin: false,
+      usageStats: false
+    }),
+    requestAllPermissions: async () => ({ success: false }),
+    requestSpecificPermission: async () => ({ success: false }),
+    openAppSettings: async () => ({ success: false }),
+    enableScreenshotPrevention: async () => ({ success: false }),
+    disableScreenshotPrevention: async () => ({ success: false }),
+    enableAppHiding: async () => ({ success: false }),
+    disableAppHiding: async () => ({ success: false }),
+    startRealTimeMonitoring: async () => ({ success: false }),
+    stopRealTimeMonitoring: async () => ({ success: false }),
+    captureIntruderPhoto: async () => ({ success: false }),
+    detectTamperAttempts: async () => ({ success: false, tampering: false, details: {} }),
+    enableSecureMode: async () => ({ success: false }),
+    disableSecureMode: async () => ({ success: false }),
+    wipeSecureData: async () => ({ success: false })
   }
 });
 
 export class RealNativeSecurityService {
   private static instance: RealNativeSecurityService;
-  private isInitialized = false;
-  private fileHidingService = RealFileHidingService.getInstance();
-  private notificationService = RealNativeNotificationService.getInstance();
 
   static getInstance(): RealNativeSecurityService {
     if (!RealNativeSecurityService.instance) {
@@ -148,121 +77,39 @@ export class RealNativeSecurityService {
   }
 
   async initialize(): Promise<void> {
-    if (this.isInitialized) return;
-
     try {
+      const result = await RealNativeSecurity.initialize();
+      if (!result.success) {
+        throw new Error('Failed to initialize native security');
+      }
       console.log('Real native security service initialized');
-      this.isInitialized = true;
     } catch (error) {
-      console.error('Failed to initialize real native security service:', error);
-      throw error;
-    }
-  }
-
-  async executeDialerCode(action: string): Promise<{ success: boolean }> {
-    try {
-      const result = await NativeSecurity.executeDialerCode(action);
-      return result;
-    } catch (error) {
-      console.error('Failed to execute dialer code:', error);
-      return { success: false };
-    }
-  }
-
-  async enableStealthMode(): Promise<{ success: boolean }> {
-    try {
-      const result = await NativeSecurity.enableStealthMode();
-      return result;
-    } catch (error) {
-      console.error('Failed to enable stealth mode:', error);
-      return { success: false };
-    }
-  }
-
-  async disableStealthMode(): Promise<{ success: boolean }> {
-    try {
-      const result = await NativeSecurity.disableStealthMode();
-      return result;
-    } catch (error) {
-      console.error('Failed to disable stealth mode:', error);
-      return { success: false };
-    }
-  }
-
-  async triggerSelfDestruct(confirmCode: string): Promise<{ success: boolean }> {
-    try {
-      const result = await NativeSecurity.triggerSelfDestruct(confirmCode);
-      return result;
-    } catch (error) {
-      console.error('Failed to trigger self destruct:', error);
-      return { success: false };
-    }
-  }
-
-  async performComprehensiveSecurityScan(): Promise<{
-    rootDetection: any;
-    emulatorDetection: any;
-    debuggingDetection: any;
-    hookingDetection: any;
-    appIntegrity: any;
-    networkSecurity: any;
-    permissions: any;
-    overallThreatLevel: 'low' | 'medium' | 'high' | 'critical';
-  }> {
-    try {
-      const [rootDetection, emulatorDetection, debuggingDetection, hookingDetection, appIntegrity, networkSecurity, permissions] = await Promise.all([
-        RealAdvancedTamperDetection.detectRootAccess(),
-        RealAdvancedTamperDetection.detectEmulator(),
-        RealAdvancedTamperDetection.detectDebugging(),
-        RealAdvancedTamperDetection.detectHooking(),
-        RealAdvancedTamperDetection.verifyAppIntegrity(),
-        NetworkSecurity.analyzeNetworkSecurity(),
-        RealPermissions.checkAllPermissions()
-      ]);
-
-      const overallThreatLevel = this.calculateThreatLevel({
-        rootDetection,
-        emulatorDetection,
-        debuggingDetection,
-        hookingDetection,
-        appIntegrity,
-        networkSecurity
-      });
-
-      return {
-        rootDetection,
-        emulatorDetection,
-        debuggingDetection,
-        hookingDetection,
-        appIntegrity,
-        networkSecurity,
-        permissions,
-        overallThreatLevel
-      };
-    } catch (error) {
-      console.error('Comprehensive security scan failed:', error);
-      throw error;
-    }
-  }
-
-  async enableAdvancedProtection(): Promise<void> {
-    try {
-      await NetworkSecurity.enableCertificatePinning();
-      console.log('Advanced protection enabled');
-    } catch (error) {
-      console.error('Failed to enable advanced protection:', error);
-      throw error;
+      console.error('Failed to initialize native security service:', error);
     }
   }
 
   async checkPermissions(): Promise<any> {
-    return await RealPermissions.checkAllPermissions();
+    try {
+      return await RealNativeSecurity.checkPermissions();
+    } catch (error) {
+      console.error('Failed to check permissions:', error);
+      return {
+        camera: false,
+        microphone: false,
+        location: false,
+        storage: false,
+        phone: false,
+        overlay: false,
+        deviceAdmin: false,
+        usageStats: false
+      };
+    }
   }
 
   async requestAllPermissions(): Promise<boolean> {
     try {
-      const result = await RealPermissions.requestAllPermissions();
-      return result.granted;
+      const result = await RealNativeSecurity.requestAllPermissions();
+      return result.success;
     } catch (error) {
       console.error('Failed to request all permissions:', error);
       return false;
@@ -271,8 +118,8 @@ export class RealNativeSecurityService {
 
   async requestSpecificPermission(permission: string): Promise<boolean> {
     try {
-      const result = await RealPermissions.requestSpecificPermission({ permission });
-      return result.granted;
+      const result = await RealNativeSecurity.requestSpecificPermission({ permission });
+      return result.success;
     } catch (error) {
       console.error(`Failed to request ${permission} permission:`, error);
       return false;
@@ -281,77 +128,122 @@ export class RealNativeSecurityService {
 
   async openAppSettings(): Promise<void> {
     try {
-      await RealPermissions.openAppSettings();
+      await RealNativeSecurity.openAppSettings();
     } catch (error) {
       console.error('Failed to open app settings:', error);
     }
   }
 
-  async hideFile(fileName: string): Promise<boolean> {
+  async enableScreenshotPrevention(): Promise<boolean> {
     try {
-      const success = await this.fileHidingService.hideFile(fileName);
-      if (success) {
-        await this.notificationService.showSecurityAlert(
-          'File Hidden',
-          `${fileName} has been securely hidden`,
-          'file_hidden'
-        );
-      }
-      return success;
+      const result = await RealNativeSecurity.enableScreenshotPrevention();
+      return result.success;
     } catch (error) {
-      console.error('Failed to hide file:', error);
+      console.error('Failed to enable screenshot prevention:', error);
       return false;
     }
   }
 
-  async showFile(fileName: string): Promise<boolean> {
+  async disableScreenshotPrevention(): Promise<boolean> {
     try {
-      const success = await this.fileHidingService.showFile(fileName);
-      if (success) {
-        await this.notificationService.showSecurityAlert(
-          'File Revealed',
-          `${fileName} is now visible`,
-          'file_shown'
-        );
-      }
-      return success;
+      const result = await RealNativeSecurity.disableScreenshotPrevention();
+      return result.success;
     } catch (error) {
-      console.error('Failed to show file:', error);
+      console.error('Failed to disable screenshot prevention:', error);
       return false;
     }
   }
 
-  async isFileHidden(fileName: string): Promise<boolean> {
-    return await this.fileHidingService.isFileHidden(fileName);
+  async enableAppHiding(calculatorMode: boolean = true): Promise<boolean> {
+    try {
+      const result = await RealNativeSecurity.enableAppHiding({ calculatorMode });
+      return result.success;
+    } catch (error) {
+      console.error('Failed to enable app hiding:', error);
+      return false;
+    }
   }
 
-  async getHiddenFiles(): Promise<string[]> {
-    return await this.fileHidingService.getHiddenFiles();
+  async disableAppHiding(): Promise<boolean> {
+    try {
+      const result = await RealNativeSecurity.disableAppHiding();
+      return result.success;
+    } catch (error) {
+      console.error('Failed to disable app hiding:', error);
+      return false;
+    }
   }
 
-  async getVisibleFiles(): Promise<string[]> {
-    return await this.fileHidingService.getVisibleFiles();
+  async startRealTimeMonitoring(): Promise<boolean> {
+    try {
+      const result = await RealNativeSecurity.startRealTimeMonitoring();
+      return result.success;
+    } catch (error) {
+      console.error('Failed to start real-time monitoring:', error);
+      return false;
+    }
   }
 
-  async sendSecurityAlert(title: string, message: string, alertType: string = 'security'): Promise<void> {
-    await this.notificationService.showSecurityAlert(title, message, alertType);
+  async stopRealTimeMonitoring(): Promise<boolean> {
+    try {
+      const result = await RealNativeSecurity.stopRealTimeMonitoring();
+      return result.success;
+    } catch (error) {
+      console.error('Failed to stop real-time monitoring:', error);
+      return false;
+    }
   }
 
-  private calculateThreatLevel(scanResults: any): 'low' | 'medium' | 'high' | 'critical' {
-    let threatScore = 0;
+  async captureIntruderPhoto(): Promise<string | null> {
+    try {
+      const result = await RealNativeSecurity.captureIntruderPhoto();
+      return result.success ? result.photoPath || null : null;
+    } catch (error) {
+      console.error('Failed to capture intruder photo:', error);
+      return null;
+    }
+  }
 
-    if (scanResults.rootDetection.isRooted) threatScore += 30;
-    if (scanResults.emulatorDetection.isEmulator) threatScore += 20;
-    if (scanResults.debuggingDetection.isDebugging) threatScore += 25;
-    if (scanResults.hookingDetection.xposedDetected) threatScore += 35;
-    if (scanResults.hookingDetection.friddaDetected) threatScore += 35;
-    if (!scanResults.appIntegrity.signatureValid) threatScore += 40;
-    if (!scanResults.appIntegrity.installerValid) threatScore += 15;
-    if (scanResults.networkSecurity.isProxyDetected) threatScore += 10;
+  async detectTamperAttempts(): Promise<{ tampering: boolean; details: any }> {
+    try {
+      const result = await RealNativeSecurity.detectTamperAttempts();
+      return {
+        tampering: result.tampering,
+        details: result.details
+      };
+    } catch (error) {
+      console.error('Failed to detect tamper attempts:', error);
+      return { tampering: false, details: {} };
+    }
+  }
 
-    if (threatScore >= 70) return 'critical';
-    if (threatScore >= 40) return 'high';
-    if (threatScore >= 20) return 'medium';
-    return 'low';
+  async enableSecureMode(): Promise<boolean> {
+    try {
+      const result = await RealNativeSecurity.enableSecureMode();
+      return result.success;
+    } catch (error) {
+      console.error('Failed to enable secure mode:', error);
+      return false;
+    }
+  }
+
+  async disableSecureMode(): Promise<boolean> {
+    try {
+      const result = await RealNativeSecurity.disableSecureMode();
+      return result.success;
+    } catch (error) {
+      console.error('Failed to disable secure mode:', error);
+      return false;
+    }
+  }
+
+  async wipeSecureData(): Promise<boolean> {
+    try {
+      const result = await RealNativeSecurity.wipeSecureData();
+      return result.success;
+    } catch (error) {
+      console.error('Failed to wipe secure data:', error);
+      return false;
+    }
   }
 }
