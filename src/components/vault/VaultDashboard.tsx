@@ -30,9 +30,30 @@ const VaultDashboard = () => {
   const { logout, fakeVaultMode } = useAuth();
   const { theme } = useTheme();
   const [recentFiles, setRecentFiles] = useState(files.slice(0, 6));
+  const [storageInfo, setStorageInfo] = useState({
+    used: 0,
+    total: 0,
+    available: 0,
+    percentage: 0,
+    formattedUsed: '0 Bytes',
+    formattedTotal: '0 Bytes',
+    formattedAvailable: '0 Bytes'
+  });
 
   useEffect(() => {
     setRecentFiles(files.slice(0, 6));
+    
+    // Load storage information
+    const loadStorageInfo = async () => {
+      try {
+        const storage = await getStorageUsage();
+        setStorageInfo(storage);
+      } catch (error) {
+        console.error('Error loading storage info:', error);
+      }
+    };
+    
+    loadStorageInfo();
     
     // Initialize shake detection
     const initShakeDetection = async () => {
@@ -54,10 +75,7 @@ const VaultDashboard = () => {
         DeviceMotionService.stopShakeDetection();
       });
     };
-  }, [files, logout]);
-
-  const storageUsage = getStorageUsage();
-  const storagePercentage = (storageUsage.used / storageUsage.total) * 100;
+  }, [files, logout, getStorageUsage]);
 
   const quickStats = [
     {
@@ -197,13 +215,12 @@ const VaultDashboard = () => {
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-foreground">Storage Usage</h3>
             <Badge variant="outline">
-              {(storageUsage.used / (1024 * 1024)).toFixed(1)} MB / 
-              {(storageUsage.total / (1024 * 1024)).toFixed(0)} MB
+              {storageInfo.formattedUsed} / {storageInfo.formattedTotal}
             </Badge>
           </div>
-          <Progress value={storagePercentage} className="h-2" />
+          <Progress value={storageInfo.percentage} className="h-2" />
           <p className="text-sm text-muted-foreground mt-2">
-            {storagePercentage.toFixed(1)}% used
+            {storageInfo.percentage.toFixed(1)}% used
           </p>
         </Card>
 
