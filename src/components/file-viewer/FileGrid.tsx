@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Card } from '@/components/ui/card';
@@ -25,6 +24,7 @@ interface FileGridProps {
   onToggleFavorite: (fileId: string) => void;
   onDeleteFile: (fileId: string) => void;
   onExportFile: (fileId: string) => void;
+  onFileView?: (fileId: string) => void;
 }
 
 const FileGrid: React.FC<FileGridProps> = ({
@@ -33,7 +33,8 @@ const FileGrid: React.FC<FileGridProps> = ({
   onFileSelect,
   onToggleFavorite,
   onDeleteFile,
-  onExportFile
+  onExportFile,
+  onFileView
 }) => {
   const [viewingFile, setViewingFile] = useState<string | null>(null);
 
@@ -66,6 +67,14 @@ const FileGrid: React.FC<FileGridProps> = ({
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const handleFileClick = (fileId: string) => {
+    if (onFileView) {
+      onFileView(fileId);
+    } else {
+      setViewingFile(fileId);
+    }
   };
 
   return (
@@ -101,7 +110,7 @@ const FileGrid: React.FC<FileGridProps> = ({
                 {/* File Thumbnail/Preview */}
                 <div 
                   className="aspect-square relative bg-muted flex items-center justify-center overflow-hidden"
-                  onClick={() => setViewingFile(file.id)}
+                  onClick={() => handleFileClick(file.id)}
                 >
                   {thumbnail ? (
                     <img
@@ -212,8 +221,8 @@ const FileGrid: React.FC<FileGridProps> = ({
         })}
       </div>
 
-      {/* File Viewer Modal */}
-      {viewingFile && (
+      {/* File Viewer Modal - only show if no external onFileView handler */}
+      {viewingFile && !onFileView && (
         <FileViewer
           fileId={viewingFile}
           onClose={() => setViewingFile(null)}
