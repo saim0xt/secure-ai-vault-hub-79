@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -18,15 +19,19 @@ import {
   Loader2,
   Grid3X3,
   List,
-  Filter,
-  SortAsc,
   Shield,
   HardDrive
 } from 'lucide-react';
 
+interface StorageInfo {
+  formattedUsed: string;
+  formattedTotal: string;
+  percentage: number;
+}
+
 const FileManager = () => {
   const navigate = useNavigate();
-  const { folderId } = useParams();
+  const { folderId } = useParams<{ folderId?: string }>();
   const { 
     files, 
     folders, 
@@ -54,8 +59,8 @@ const FileManager = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<'name' | 'date' | 'size' | 'type'>('date');
   const [filterType, setFilterType] = useState<'all' | 'image' | 'video' | 'audio' | 'document'>('all');
-  const [storageInfo, setStorageInfo] = useState(null);
-  const [viewingFile, setViewingFile] = useState(null);
+  const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null);
+  const [viewingFile, setViewingFile] = useState<string | null>(null);
 
   useEffect(() => {
     if (folderId && folderId !== currentFolder) {
@@ -349,7 +354,7 @@ const FileManager = () => {
           
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
+            onChange={(e) => setSortBy(e.target.value as 'name' | 'date' | 'size' | 'type')}
             className="bg-background border border-border rounded-md px-3 py-2 text-sm"
           >
             <option value="date">Sort by Date</option>
@@ -360,7 +365,7 @@ const FileManager = () => {
           
           <select
             value={filterType}
-            onChange={(e) => setFilterType(e.target.value as any)}
+            onChange={(e) => setFilterType(e.target.value as 'all' | 'image' | 'video' | 'audio' | 'document')}
             className="bg-background border border-border rounded-md px-3 py-2 text-sm"
           >
             <option value="all">All Files</option>
