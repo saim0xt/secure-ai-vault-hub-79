@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -8,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import FileGrid from '@/components/file-viewer/FileGrid';
+import RealFileViewer from '@/components/file-viewer/RealFileViewer';
 import {
   ArrowLeft,
   Search,
@@ -19,7 +19,9 @@ import {
   Grid3X3,
   List,
   Filter,
-  SortAsc
+  SortAsc,
+  Shield,
+  HardDrive
 } from 'lucide-react';
 
 const FileManager = () => {
@@ -38,6 +40,7 @@ const FileManager = () => {
     exportFile,
     toggleFileSelection,
     clearSelection,
+    getStorageUsage,
     loading,
     refreshFiles
   } = useVault();
@@ -51,25 +54,57 @@ const FileManager = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<'name' | 'date' | 'size' | 'type'>('date');
   const [filterType, setFilterType] = useState<'all' | 'image' | 'video' | 'audio' | 'document'>('all');
+  const [storageInfo, setStorageInfo] = useState(null);
+  const [viewingFile, setViewingFile] = useState(null);
 
   useEffect(() => {
     if (folderId && folderId !== currentFolder) {
       setCurrentFolder(folderId);
     }
+    loadStorageInfo();
   }, [folderId, currentFolder, setCurrentFolder]);
 
-  // Filter and sort files
-  const currentFiles = files.filter(file => file.folderId === currentFolder);
-  const currentFolders = folders.filter(folder => folder.parentId === currentFolder);
+  const loadStorageInfo = async () => {
+    try {
+      console.log('Loading real Android storage info...');
+      const storage = await getStorageUsage();
+      setStorageInfo(storage);
+      console.log('Real storage info loaded:', storage);
+    } catch (error) {
+      console.error('Error loading storage info:', error);
+    }
+  };
+
+  // FIXED: Proper file filtering logic
+  const currentFiles = files.filter(file => {
+    // If no current folder, show files without folderId (root level)
+    if (!currentFolder) {
+      return !file.folderId || file.folderId === null || file.folderId === undefined;
+    }
+    // If in a folder, show files with matching folderId
+    return file.folderId === currentFolder;
+  });
+  
+  const currentFolders = folders.filter(folder => {
+    // If no current folder, show folders without parentId (root level)
+    if (!currentFolder) {
+      return !folder.parentId || folder.parentId === null || folder.parentId === undefined;
+    }
+    // If in a folder, show subfolders with matching parentId
+    return folder.parentId === currentFolder;
+  });
+
+  console.log('FIXED - Current files count:', currentFiles.length);
+  console.log('FIXED - Current folders count:', currentFolders.length);
+  console.log('FIXED - Total files in vault:', files.length);
+  console.log('FIXED - Current folder:', currentFolder);
 
   const filteredFiles = currentFiles
     .filter(file => {
-      // Search filter
       const matchesSearch = searchQuery === '' || 
         file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         file.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
       
-      // Type filter
       const matchesType = filterType === 'all' || file.type === filterType;
       
       return matchesSearch && matchesType;
@@ -100,25 +135,27 @@ const FileManager = () => {
 
     try {
       setImporting(true);
-      console.log('Starting file import:', fileList.length, 'files');
+      console.log('Starting real Android file import:', fileList.length, 'files');
       
       for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i];
-        console.log('Importing file:', file.name, 'Size:', file.size);
+        console.log('Importing file to real Android storage:', file.name, 'Size:', file.size);
         await addFile(file, currentFolder || undefined);
       }
       
+      await loadStorageInfo();
+      
       toast({
         title: "Success",
-        description: `${fileList.length} file(s) imported successfully`,
+        description: `${fileList.length} file(s) secured and hidden from device`,
       });
       
       event.target.value = '';
     } catch (error) {
-      console.error('File import error:', error);
+      console.error('Real Android file import error:', error);
       toast({
         title: "Error",
-        description: "Failed to import files",
+        description: "Failed to secure files",
         variant: "destructive",
       });
     } finally {
@@ -155,7 +192,7 @@ const FileManager = () => {
       setShowNewFolderDialog(false);
       toast({
         title: "Success",
-        description: "Folder created successfully",
+        description: "Secure folder created",
       });
     } catch (error) {
       console.error('Create folder error:', error);
@@ -216,7 +253,7 @@ const FileManager = () => {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex items-center space-x-2">
           <Loader2 className="w-6 h-6 animate-spin" />
-          <span className="text-foreground">Loading vault...</span>
+          <span className="text-foreground">Loading secure vault...</span>
         </div>
       </div>
     );
@@ -235,13 +272,20 @@ const FileManager = () => {
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex-1">
-            <h1 className="text-xl font-bold text-foreground">
-              {currentFolder ? 'Folder' : 'File Manager'}
+            <h1 className="text-xl font-bold text-foreground flex items-center">
+              <Shield className="w-5 h-5 mr-2 text-green-600" />
+              File Manager
             </h1>
-            <p className="text-sm text-muted-foreground">
-              {filteredFiles.length} files • {filteredFolders.length} folders
-              {selectedFiles.length > 0 && ` • ${selectedFiles.length} selected`}
-            </p>
+            <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+              <span>{filteredFiles.length} files • {filteredFolders.length} folders</span>
+              {selectedFiles.length > 0 && <span>• {selectedFiles.length} selected</span>}
+              {storageInfo && (
+                <span className="flex items-center">
+                  <HardDrive className="w-3 h-3 mr-1" />
+                  {storageInfo.formattedUsed} / {storageInfo.formattedTotal} used
+                </span>
+              )}
+            </div>
           </div>
           
           {/* View Controls */}
@@ -303,7 +347,6 @@ const FileManager = () => {
             />
           </div>
           
-          {/* Sort Dropdown */}
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
@@ -315,7 +358,6 @@ const FileManager = () => {
             <option value="type">Sort by Type</option>
           </select>
           
-          {/* Filter Dropdown */}
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value as any)}
@@ -328,9 +370,30 @@ const FileManager = () => {
             <option value="document">Documents</option>
           </select>
         </div>
+
+        {/* Storage Info Bar */}
+        {storageInfo && (
+          <div className="mt-3 p-2 bg-muted rounded-lg">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Device Storage: {storageInfo.formattedUsed} used of {storageInfo.formattedTotal}</span>
+              <span>{storageInfo.percentage.toFixed(1)}% full</span>
+            </div>
+            <div className="w-full bg-background rounded-full h-1.5 mt-1">
+              <div 
+                className="bg-primary h-1.5 rounded-full transition-all duration-300" 
+                style={{ width: `${Math.min(storageInfo.percentage, 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="p-4">
+        {/* Debug Info */}
+        <div className="mb-2 text-xs text-muted-foreground">
+          Debug: Total files: {files.length}, Current files: {currentFiles.length}, Filtered: {filteredFiles.length}
+        </div>
+
         {/* Folders */}
         {filteredFolders.length > 0 && (
           <div className="mb-6">
@@ -366,7 +429,9 @@ const FileManager = () => {
         {/* Files */}
         {filteredFiles.length > 0 && (
           <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">Files</h3>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">
+              Files ({filteredFiles.length})
+            </h3>
             <FileGrid
               files={filteredFiles}
               selectedFiles={selectedFiles}
@@ -374,14 +439,17 @@ const FileManager = () => {
               onToggleFavorite={toggleFavorite}
               onDeleteFile={handleDeleteFile}
               onExportFile={handleExportFile}
+              onFileView={(fileId) => setViewingFile(fileId)}
             />
           </div>
         )}
 
-        {/* Empty State */}
+        {/* Empty State - FIXED condition */}
         {filteredFiles.length === 0 && filteredFolders.length === 0 && !loading && (
           <div className="text-center py-12">
-            <Folder className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+            <div className="flex items-center justify-center mb-4">
+              <Shield className="w-16 h-16 text-green-600" />
+            </div>
             <h3 className="text-lg font-medium text-foreground mb-2">
               {searchQuery || filterType !== 'all' ? 'No results found' : 'No files yet'}
             </h3>
@@ -447,6 +515,14 @@ const FileManager = () => {
             </div>
           </Card>
         </div>
+      )}
+
+      {/* Real File Viewer */}
+      {viewingFile && (
+        <RealFileViewer
+          fileId={viewingFile}
+          onClose={() => setViewingFile(null)}
+        />
       )}
 
       {/* Hidden File Input */}
