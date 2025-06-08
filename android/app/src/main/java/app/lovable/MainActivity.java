@@ -13,5 +13,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(app.lovable.plugins.RealPermissionsPlugin.class);
         registerPlugin(app.lovable.plugins.AdvancedTamperDetectionPlugin.class);
         registerPlugin(app.lovable.plugins.NetworkSecurityPlugin.class);
+        registerPlugin(app.lovable.plugins.RealFileHidingPlugin.class);
+        registerPlugin(app.lovable.plugins.RealNativeNotificationPlugin.class);
     }
 }

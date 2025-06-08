@@ -1,77 +1,86 @@
 
 import { useState } from 'react';
-import { PermissionsService } from '@/services/PermissionsService';
+import { RealPermissionsService } from '@/services/RealPermissionsService';
+import { RealNativeNotificationService } from '@/services/RealNativeNotificationService';
 
 interface PermissionDialogState {
   isOpen: boolean;
   permissionType: string | null;
-  onAllow: () => void;
-  onDeny: () => void;
+  onAllow: (() => void) | null;
+  onDeny: (() => void) | null;
 }
 
-export const usePermissionDialog = () => {
+export function usePermissionDialog() {
   const [dialogState, setDialogState] = useState<PermissionDialogState>({
     isOpen: false,
     permissionType: null,
-    onAllow: () => {},
-    onDeny: () => {}
+    onAllow: null,
+    onDeny: null,
   });
 
-  const permissionsService = PermissionsService.getInstance();
+  const permissionsService = RealPermissionsService.getInstance();
+  const notificationService = RealNativeNotificationService.getInstance();
 
   const requestPermission = async (
     permissionType: string,
-    onSuccess?: () => void,
-    onFailure?: () => void
+    onAllow: () => void,
+    onDeny: () => void
   ) => {
-    // Check if user previously said "don't ask again"
-    const dontAsk = localStorage.getItem(`permission_${permissionType}_dont_ask`);
-    if (dontAsk === 'true') {
-      // Directly try to request permission without showing dialog
-      try {
-        const granted = await permissionsService.requestSpecificPermission(permissionType as any);
-        if (granted) {
-          onSuccess?.();
-        } else {
-          onFailure?.();
-        }
-      } catch (error) {
-        console.error('Permission request failed:', error);
-        onFailure?.();
+    try {
+      // Show native Android permission dialog first
+      const granted = await permissionsService.requestSpecificPermission(permissionType as any);
+      
+      if (granted) {
+        onAllow();
+        await notificationService.showSecurityAlert(
+          'Permission Granted',
+          `${permissionType} permission has been granted`,
+          'permission_granted'
+        );
+      } else {
+        // Show custom dialog as fallback
+        setDialogState({
+          isOpen: true,
+          permissionType,
+          onAllow: async () => {
+            const retryGranted = await permissionsService.requestSpecificPermission(permissionType as any);
+            if (retryGranted) {
+              onAllow();
+            } else {
+              await notificationService.showPermissionRequest(
+                permissionType,
+                'This permission is required for security features to work properly'
+              );
+              onDeny();
+            }
+          },
+          onDeny: () => {
+            onDeny();
+            notificationService.showPermissionRequest(
+              permissionType,
+              'Permission denied. Some features may not work correctly.'
+            );
+          },
+        });
       }
-      return;
+    } catch (error) {
+      console.error('Failed to request permission:', error);
+      onDeny();
     }
-
-    // Show permission dialog
-    setDialogState({
-      isOpen: true,
-      permissionType,
-      onAllow: async () => {
-        try {
-          const granted = await permissionsService.requestSpecificPermission(permissionType as any);
-          if (granted) {
-            onSuccess?.();
-          } else {
-            onFailure?.();
-          }
-        } catch (error) {
-          console.error('Permission request failed:', error);
-          onFailure?.();
-        }
-      },
-      onDeny: () => {
-        onFailure?.();
-      }
-    });
   };
 
   const closeDialog = () => {
-    setDialogState(prev => ({ ...prev, isOpen: false }));
+    setDialogState({
+      isOpen: false,
+      permissionType: null,
+      onAllow: null,
+      onDeny: null,
+    });
   };
 
   return {
     dialogState,
     requestPermission,
-    closeDialog
+    closeDialog,
   };
-};
+}

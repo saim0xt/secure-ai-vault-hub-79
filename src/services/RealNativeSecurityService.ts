@@ -1,4 +1,6 @@
 import { registerPlugin } from '@capacitor/core';
+import { RealFileHidingService } from './RealFileHidingService';
+import { RealNativeNotificationService } from './RealNativeNotificationService';
 
 export interface NativeSecurityPlugin {
   detectRootAccess(): Promise<{ isRooted: boolean; confidence: number; indicators: any }>;
@@ -135,6 +137,8 @@ const NativeSecurity = registerPlugin<NativeSecurityPlugin>('NativeSecurity', {
 export class RealNativeSecurityService {
   private static instance: RealNativeSecurityService;
   private isInitialized = false;
+  private fileHidingService = RealFileHidingService.getInstance();
+  private notificationService = RealNativeNotificationService.getInstance();
 
   static getInstance(): RealNativeSecurityService {
     if (!RealNativeSecurityService.instance) {
@@ -281,6 +285,56 @@ export class RealNativeSecurityService {
     } catch (error) {
       console.error('Failed to open app settings:', error);
     }
+  }
+
+  async hideFile(fileName: string): Promise<boolean> {
+    try {
+      const success = await this.fileHidingService.hideFile(fileName);
+      if (success) {
+        await this.notificationService.showSecurityAlert(
+          'File Hidden',
+          `${fileName} has been securely hidden`,
+          'file_hidden'
+        );
+      }
+      return success;
+    } catch (error) {
+      console.error('Failed to hide file:', error);
+      return false;
+    }
+  }
+
+  async showFile(fileName: string): Promise<boolean> {
+    try {
+      const success = await this.fileHidingService.showFile(fileName);
+      if (success) {
+        await this.notificationService.showSecurityAlert(
+          'File Revealed',
+          `${fileName} is now visible`,
+          'file_shown'
+        );
+      }
+      return success;
+    } catch (error) {
+      console.error('Failed to show file:', error);
+      return false;
+    }
+  }
+
+  async isFileHidden(fileName: string): Promise<boolean> {
+    return await this.fileHidingService.isFileHidden(fileName);
+  }
+
+  async getHiddenFiles(): Promise<string[]> {
+    return await this.fileHidingService.getHiddenFiles();
+  }
+
+  async getVisibleFiles(): Promise<string[]> {
+    return await this.fileHidingService.getVisibleFiles();
+  }
+
+  async sendSecurityAlert(title: string, message: string, alertType: string = 'security'): Promise<void> {
+    await this.notificationService.showSecurityAlert(title, message, alertType);
   }
 
   private calculateThreatLevel(scanResults: any): 'low' | 'medium' | 'high' | 'critical' {
