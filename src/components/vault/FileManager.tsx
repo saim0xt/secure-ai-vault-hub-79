@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useVault } from '@/contexts/VaultContext';
@@ -17,7 +17,9 @@ import {
   Plus,
   MoreVertical,
   Star,
-  Trash
+  Trash,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 
 const FileManager = () => {
@@ -31,13 +33,23 @@ const FileManager = () => {
     addFile, 
     addFolder,
     deleteFile,
-    toggleFavorite 
+    toggleFavorite,
+    loading,
+    refreshFiles
   } = useVault();
   const { toast } = useToast();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (folderId && folderId !== currentFolder) {
+      setCurrentFolder(folderId);
+    }
+  }, [folderId, currentFolder, setCurrentFolder]);
 
   // Filter files and folders based on current location
   const currentFiles = files.filter(file => file.folderId === currentFolder);
@@ -59,22 +71,54 @@ const FileManager = () => {
 
   const handleFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = event.target.files;
-    if (fileList) {
-      try {
-        for (let i = 0; i < fileList.length; i++) {
-          await addFile(fileList[i], currentFolder || undefined);
-        }
-        toast({
-          title: "Success",
-          description: `${fileList.length} file(s) imported successfully`,
-        });
-      } catch (error) {
-        toast({
-          title: "Error",
-          description: "Failed to import files",
-          variant: "destructive",
-        });
+    if (!fileList || fileList.length === 0) return;
+
+    try {
+      setImporting(true);
+      console.log('Starting file import:', fileList.length, 'files');
+      
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        console.log('Importing file:', file.name, 'Size:', file.size);
+        await addFile(file, currentFolder || undefined);
       }
+      
+      toast({
+        title: "Success",
+        description: `${fileList.length} file(s) imported successfully`,
+      });
+      
+      // Clear the input
+      event.target.value = '';
+    } catch (error) {
+      console.error('File import error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to import files",
+        variant: "destructive",
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    try {
+      setRefreshing(true);
+      await refreshFiles();
+      toast({
+        title: "Success",
+        description: "Files refreshed successfully",
+      });
+    } catch (error) {
+      console.error('Refresh error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to refresh files",
+        variant: "destructive",
+      });
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -90,6 +134,7 @@ const FileManager = () => {
         description: "Folder created successfully",
       });
     } catch (error) {
+      console.error('Create folder error:', error);
       toast({
         title: "Error",
         description: "Failed to create folder",
@@ -113,9 +158,10 @@ const FileManager = () => {
       await deleteFile(fileId);
       toast({
         title: "Success",
-        description: "File deleted successfully",
+        description: "File moved to recycle bin",
       });
     } catch (error) {
+      console.error('Delete file error:', error);
       toast({
         title: "Error",
         description: "Failed to delete file",
@@ -143,6 +189,17 @@ const FileManager = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="w-6 h-6 animate-spin" />
+          <span className="text-foreground">Loading vault...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -159,7 +216,18 @@ const FileManager = () => {
             <h1 className="text-xl font-bold text-foreground">
               {currentFolder ? 'Folder' : 'File Manager'}
             </h1>
+            <p className="text-sm text-muted-foreground">
+              {files.length} files • {folders.length} folders
+            </p>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -171,8 +239,13 @@ const FileManager = () => {
             variant="ghost"
             size="icon"
             onClick={() => document.getElementById('file-input')?.click()}
+            disabled={importing}
           >
-            <Upload className="w-5 h-5" />
+            {importing ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Upload className="w-5 h-5" />
+            )}
           </Button>
         </div>
 
@@ -302,7 +375,7 @@ const FileManager = () => {
         )}
 
         {/* Empty State */}
-        {filteredFiles.length === 0 && filteredFolders.length === 0 && (
+        {filteredFiles.length === 0 && filteredFolders.length === 0 && !loading && (
           <div className="text-center py-12">
             <Folder className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-medium text-foreground mb-2">
@@ -315,9 +388,21 @@ const FileManager = () => {
               }
             </p>
             {!searchQuery && (
-              <Button onClick={() => document.getElementById('file-input')?.click()}>
-                <Upload className="w-4 h-4 mr-2" />
-                Import Files
+              <Button 
+                onClick={() => document.getElementById('file-input')?.click()}
+                disabled={importing}
+              >
+                {importing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Import Files
+                  </>
+                )}
               </Button>
             )}
           </div>
@@ -334,6 +419,11 @@ const FileManager = () => {
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               className="mb-4"
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  handleCreateFolder();
+                }
+              }}
             />
             <div className="flex space-x-2">
               <Button

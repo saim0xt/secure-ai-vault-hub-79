@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Preferences } from '@capacitor/preferences';
 import { Share } from '@capacitor/share';
@@ -6,7 +5,7 @@ import CryptoJS from 'crypto-js';
 import { RecycleBinService, DeletedFile } from '@/services/RecycleBinService';
 import { FileViewerService } from '@/services/FileViewerService';
 import { DuplicateDetectionService, DuplicateGroup } from '@/services/DuplicateDetectionService';
-import { StorageService } from '@/services/StorageService';
+import { AndroidStorageService, SecureFileMetadata } from '@/services/AndroidStorageService';
 
 export interface VaultFile {
   id: string;
@@ -62,6 +61,7 @@ interface VaultContextType {
   findDuplicates: () => Promise<DuplicateGroup[]>;
   cleanupDuplicates: (duplicateGroups: DuplicateGroup[]) => Promise<void>;
   loading: boolean;
+  refreshFiles: () => Promise<void>;
 }
 
 const VaultContext = createContext<VaultContextType | undefined>(undefined);
@@ -80,19 +80,32 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const storageService = StorageService.getInstance();
+  
+  const androidStorage = AndroidStorageService.getInstance();
 
   useEffect(() => {
-    const initializeStorage = async () => {
-      await storageService.createVaultDirectory();
-      loadVaultData();
-    };
-    initializeStorage();
+    initializeVault();
   }, []);
+
+  const initializeVault = async () => {
+    try {
+      setLoading(true);
+      
+      // Initialize Android secure storage
+      await androidStorage.initializeSecureStorage();
+      
+      // Load existing vault data
+      await loadVaultData();
+    } catch (error) {
+      console.error('Failed to initialize vault:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadVaultData = async () => {
     try {
-      setLoading(true);
+      console.log('Loading vault data...');
       
       const [filesResult, foldersResult] = await Promise.all([
         Preferences.get({ key: 'vaultix_files' }),
@@ -100,39 +113,54 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ]);
 
       if (filesResult.value) {
-        setFiles(JSON.parse(filesResult.value));
+        const loadedFiles = JSON.parse(filesResult.value);
+        console.log('Loaded files:', loadedFiles.length);
+        setFiles(loadedFiles);
       }
       
       if (foldersResult.value) {
-        setFolders(JSON.parse(foldersResult.value));
+        const loadedFolders = JSON.parse(foldersResult.value);
+        console.log('Loaded folders:', loadedFolders.length);
+        setFolders(loadedFolders);
       }
     } catch (error) {
       console.error('Error loading vault data:', error);
-    } finally {
-      setLoading(false);
     }
+  };
+
+  const refreshFiles = async () => {
+    await loadVaultData();
   };
 
   const saveFiles = async (newFiles: VaultFile[]) => {
     try {
+      console.log('Saving files:', newFiles.length);
       await Preferences.set({ key: 'vaultix_files', value: JSON.stringify(newFiles) });
       setFiles(newFiles);
     } catch (error) {
       console.error('Error saving files:', error);
+      throw error;
     }
   };
 
   const saveFolders = async (newFolders: VaultFolder[]) => {
     try {
+      console.log('Saving folders:', newFolders.length);
       await Preferences.set({ key: 'vaultix_folders', value: JSON.stringify(newFolders) });
       setFolders(newFolders);
     } catch (error) {
       console.error('Error saving folders:', error);
+      throw error;
     }
   };
 
-  const encryptFileData = (data: string): string => {
-    return CryptoJS.AES.encrypt(data, 'vaultix_secret_key').toString();
+  const fileToArrayBuffer = (file: File): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(file);
+    });
   };
 
   const fileToBase64 = (file: File): Promise<string> => {
@@ -152,19 +180,44 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return 'other';
   };
 
+  const generateChecksum = (data: ArrayBuffer): string => {
+    const wordArray = CryptoJS.lib.WordArray.create(data);
+    return CryptoJS.SHA256(wordArray).toString();
+  };
+
   const addFile = async (file: File, folderId?: string) => {
     try {
+      console.log('Adding file:', file.name, 'Size:', file.size);
+      setLoading(true);
+
+      const fileId = Date.now().toString();
+      const fileData = await fileToArrayBuffer(file);
       const base64Data = await fileToBase64(file);
-      const encryptedData = encryptFileData(base64Data);
-      
+      const checksum = generateChecksum(fileData);
+
+      // Create secure file metadata for Android storage
+      const metadata: SecureFileMetadata = {
+        id: fileId,
+        originalName: file.name,
+        mimeType: file.type,
+        size: file.size,
+        created: new Date().toISOString(),
+        modified: new Date().toISOString(),
+        checksum
+      };
+
+      // Store file securely using Android storage
+      await androidStorage.storeSecureFile(fileData, metadata);
+
+      // Create vault file entry
       const newFile: VaultFile = {
-        id: Date.now().toString(),
+        id: fileId,
         name: file.name,
         type: getFileType(file),
         size: file.size,
         dateAdded: new Date().toISOString(),
         dateModified: new Date().toISOString(),
-        encryptedData,
+        encryptedData: base64Data, // Keep for compatibility
         folderId,
         tags: [],
         isFavorite: false,
@@ -172,48 +225,80 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       const updatedFiles = [...files, newFile];
       await saveFiles(updatedFiles);
+      
+      console.log('File added successfully:', fileId);
     } catch (error) {
       console.error('Error adding file:', error);
       throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
   const deleteFile = async (fileId: string, permanent: boolean = false) => {
-    const fileToDelete = files.find(f => f.id === fileId);
-    if (!fileToDelete) return;
+    try {
+      const fileToDelete = files.find(f => f.id === fileId);
+      if (!fileToDelete) {
+        console.warn('File not found for deletion:', fileId);
+        return;
+      }
 
-    if (permanent) {
-      const updatedFiles = files.filter(file => file.id !== fileId);
-      await saveFiles(updatedFiles);
-    } else {
-      // Move to recycle bin
-      await RecycleBinService.addToRecycleBin(fileToDelete);
-      const updatedFiles = files.filter(file => file.id !== fileId);
-      await saveFiles(updatedFiles);
+      if (permanent) {
+        // Delete from Android secure storage
+        await androidStorage.deleteSecureFile(fileId);
+        
+        const updatedFiles = files.filter(file => file.id !== fileId);
+        await saveFiles(updatedFiles);
+      } else {
+        // Move to recycle bin
+        await RecycleBinService.addToRecycleBin(fileToDelete);
+        const updatedFiles = files.filter(file => file.id !== fileId);
+        await saveFiles(updatedFiles);
+      }
+      
+      console.log('File deleted:', fileId, 'Permanent:', permanent);
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      throw error;
     }
   };
 
   const addFolder = async (name: string, parentId?: string) => {
-    const newFolder: VaultFolder = {
-      id: Date.now().toString(),
-      name,
-      dateCreated: new Date().toISOString(),
-      parentId,
-      fileCount: 0,
-    };
+    try {
+      const newFolder: VaultFolder = {
+        id: Date.now().toString(),
+        name,
+        dateCreated: new Date().toISOString(),
+        parentId,
+        fileCount: 0,
+      };
 
-    const updatedFolders = [...folders, newFolder];
-    await saveFolders(updatedFolders);
+      const updatedFolders = [...folders, newFolder];
+      await saveFolders(updatedFolders);
+      console.log('Folder added:', name);
+    } catch (error) {
+      console.error('Error adding folder:', error);
+      throw error;
+    }
   };
 
   const deleteFolder = async (folderId: string) => {
-    // Delete all files in the folder
-    const updatedFiles = files.filter(file => file.folderId !== folderId);
-    await saveFiles(updatedFiles);
-    
-    // Delete the folder
-    const updatedFolders = folders.filter(folder => folder.id !== folderId);
-    await saveFolders(updatedFolders);
+    try {
+      // Delete all files in the folder
+      const folderFiles = files.filter(file => file.folderId === folderId);
+      for (const file of folderFiles) {
+        await deleteFile(file.id, true); // Permanent delete
+      }
+      
+      // Delete the folder
+      const updatedFolders = folders.filter(folder => folder.id !== folderId);
+      await saveFolders(updatedFolders);
+      
+      console.log('Folder deleted:', folderId);
+    } catch (error) {
+      console.error('Error deleting folder:', error);
+      throw error;
+    }
   };
 
   const moveFile = async (fileId: string, targetFolderId?: string) => {
@@ -274,19 +359,18 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const getStorageUsage = async () => {
     try {
-      const storageInfo = await storageService.getStorageInfo();
+      const storageInfo = await androidStorage.getStorageInfo();
       return {
-        used: storageInfo.used,
-        total: storageInfo.total,
-        available: storageInfo.available,
-        percentage: storageInfo.percentage,
-        formattedUsed: storageService.formatBytes(storageInfo.used),
-        formattedTotal: storageService.formatBytes(storageInfo.total),
-        formattedAvailable: storageService.formatBytes(storageInfo.available)
+        used: storageInfo.totalSize,
+        total: storageInfo.availableSpace + storageInfo.totalSize,
+        available: storageInfo.availableSpace,
+        percentage: storageInfo.totalSize > 0 ? (storageInfo.totalSize / (storageInfo.availableSpace + storageInfo.totalSize)) * 100 : 0,
+        formattedUsed: formatBytes(storageInfo.totalSize),
+        formattedTotal: formatBytes(storageInfo.availableSpace + storageInfo.totalSize),
+        formattedAvailable: formatBytes(storageInfo.availableSpace)
       };
     } catch (error) {
       console.error('Error getting storage usage:', error);
-      // Fallback values
       const used = files.reduce((total, file) => total + file.size, 0);
       const total = 32 * 1024 * 1024 * 1024; // 32GB fallback
       return {
@@ -294,11 +378,19 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         total,
         available: total - used,
         percentage: total > 0 ? (used / total) * 100 : 0,
-        formattedUsed: storageService.formatBytes(used),
-        formattedTotal: storageService.formatBytes(total),
-        formattedAvailable: storageService.formatBytes(total - used)
+        formattedUsed: formatBytes(used),
+        formattedTotal: formatBytes(total),
+        formattedAvailable: formatBytes(total - used)
       };
     }
+  };
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   const toggleFileSelection = (fileId: string) => {
@@ -337,7 +429,6 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       const exportedPath = await FileViewerService.exportFile(file);
       
-      // Share the file
       await Share.share({
         title: `Export ${file.name}`,
         text: `Exported from Vaultix: ${file.name}`,
@@ -368,7 +459,6 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const restoreFromRecycleBin = async (fileId: string) => {
     const restoredFile = await RecycleBinService.restoreFile(fileId);
     if (restoredFile) {
-      // Remove deletion metadata and restore to vault
       const { deletedAt, originalFolderId, ...fileData } = restoredFile;
       const restoredVaultFile: VaultFile = {
         ...fileData,
@@ -390,10 +480,9 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const cleanupDuplicates = async (duplicateGroups: DuplicateGroup[]) => {
     for (const group of duplicateGroups) {
-      // Keep the first file, delete the rest
       const [keepFile, ...deleteFiles] = group.files;
       for (const file of deleteFiles) {
-        await deleteFile(file.id, false); // Move to recycle bin
+        await deleteFile(file.id, false);
       }
     }
   };
@@ -431,6 +520,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       findDuplicates,
       cleanupDuplicates,
       loading,
+      refreshFiles,
     }}>
       {children}
     </VaultContext.Provider>
