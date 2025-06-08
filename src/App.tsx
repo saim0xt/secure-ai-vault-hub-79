@@ -28,6 +28,7 @@ import VoiceRecorder from "./components/voice/VoiceRecorder";
 import RecycleBin from "./components/vault/RecycleBin";
 import RewardsCenter from "./components/rewards/RewardsCenter";
 import TestingSuite from "./components/testing/TestingSuite";
+import LANSyncManager from "./components/network/LANSyncManager";
 
 // Providers
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -108,8 +109,8 @@ const AppContent = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-white text-xl">Loading Vaultix...</div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-foreground text-xl">Loading Vaultix...</div>
       </div>
     );
   }
@@ -118,7 +119,11 @@ const AppContent = () => {
   if (fakeVaultMode) {
     const CalculatorApp = React.lazy(() => import('./components/disguise/CalculatorApp'));
     return (
-      <React.Suspense fallback={<div className="min-h-screen bg-black flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
+      <React.Suspense fallback={
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <div className="text-foreground">Loading...</div>
+        </div>
+      }>
         <CalculatorApp />
       </React.Suspense>
     );
@@ -180,7 +185,7 @@ const AppContent = () => {
         } />
         <Route path="/lan-sync" element={
           <ProtectedRoute>
-            {React.lazy(() => import('./components/network/LANSyncManager'))}
+            <LANSyncManager />
           </ProtectedRoute>
         } />
         

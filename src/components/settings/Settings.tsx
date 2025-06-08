@@ -73,7 +73,7 @@ const Settings = () => {
   const checkBiometricAvailability = async () => {
     try {
       const capabilities = await BiometricService.getInstance().checkCapabilities();
-      setBiometricAvailable(capabilities.available);
+      setBiometricAvailable(capabilities.isAvailable);
     } catch (error) {
       console.error('Failed to check biometric capabilities:', error);
     }

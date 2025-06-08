@@ -24,8 +24,8 @@ const BiometricAuthButton: React.FC<BiometricAuthButtonProps> = ({ onSuccess, di
   const checkBiometricAvailability = async () => {
     try {
       const capabilities = await BiometricService.getInstance().checkCapabilities();
-      setIsAvailable(capabilities.available);
-      setBiometricType(capabilities.biometryType);
+      setIsAvailable(capabilities.isAvailable);
+      setBiometricType(capabilities.biometryTypes[0] || '');
     } catch (error) {
       console.error('Failed to check biometric capabilities:', error);
       setIsAvailable(false);
@@ -38,8 +38,7 @@ const BiometricAuthButton: React.FC<BiometricAuthButtonProps> = ({ onSuccess, di
     setIsAuthenticating(true);
     try {
       const result = await BiometricService.getInstance().authenticate(
-        'Authenticate to access your vault',
-        'Use your biometric to unlock Vaultix'
+        'Authenticate to access your vault'
       );
 
       if (result.success) {
@@ -95,7 +94,7 @@ const BiometricAuthButton: React.FC<BiometricAuthButtonProps> = ({ onSuccess, di
 
   if (!isAvailable) {
     return (
-      <div className="flex items-center justify-center p-4 border border-dashed border-muted-foreground/30 rounded-lg">
+      <div className="flex items-center justify-center p-4 border border-dashed border-border rounded-lg">
         <div className="text-center space-y-2">
           <AlertCircle className="h-8 w-8 mx-auto text-muted-foreground" />
           <p className="text-sm text-muted-foreground">Biometric authentication not available</p>
@@ -112,7 +111,7 @@ const BiometricAuthButton: React.FC<BiometricAuthButtonProps> = ({ onSuccess, di
       className="w-full h-16 text-lg relative overflow-hidden group"
       variant="default"
     >
-      <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-primary/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       <div className="relative flex items-center justify-center gap-3">
         {getBiometricIcon()}
         <span>{isAuthenticating ? 'Authenticating...' : getBiometricLabel()}</span>
