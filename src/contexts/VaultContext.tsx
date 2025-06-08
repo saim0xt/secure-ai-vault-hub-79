@@ -5,6 +5,7 @@ import CryptoJS from 'crypto-js';
 import { RecycleBinService, DeletedFile } from '@/services/RecycleBinService';
 import { FileViewerService } from '@/services/FileViewerService';
 import { DuplicateDetectionService, DuplicateGroup } from '@/services/DuplicateDetectionService';
+import { StorageService } from '@/services/StorageService';
 
 export interface VaultFile {
   id: string;
@@ -45,7 +46,7 @@ interface VaultContextType {
   toggleFavorite: (fileId: string) => Promise<void>;
   addTag: (fileId: string, tag: string) => Promise<void>;
   removeTag: (fileId: string, tag: string) => Promise<void>;
-  getStorageUsage: () => { used: number; total: number };
+  getStorageUsage: () => { used: number; total: number; available: number; percentage: number; formattedUsed: string; formattedTotal: string; formattedAvailable: string };
   setCurrentFolder: (folderId: string | null) => void;
   toggleFileSelection: (fileId: string) => void;
   selectAllFiles: () => void;
@@ -78,9 +79,14 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const storageService = StorageService.getInstance();
 
   useEffect(() => {
-    loadVaultData();
+    const initializeStorage = async () => {
+      await storageService.createVaultDirectory();
+      loadVaultData();
+    };
+    initializeStorage();
   }, []);
 
   const loadVaultData = async () => {
@@ -265,10 +271,33 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await saveFiles(updatedFiles);
   };
 
-  const getStorageUsage = () => {
-    const used = files.reduce((total, file) => total + file.size, 0);
-    const total = 100 * 1024 * 1024; // 100MB limit for demo
-    return { used, total };
+  const getStorageUsage = async () => {
+    try {
+      const storageInfo = await storageService.getStorageInfo();
+      return {
+        used: storageInfo.used,
+        total: storageInfo.total,
+        available: storageInfo.available,
+        percentage: storageInfo.percentage,
+        formattedUsed: storageService.formatBytes(storageInfo.used),
+        formattedTotal: storageService.formatBytes(storageInfo.total),
+        formattedAvailable: storageService.formatBytes(storageInfo.available)
+      };
+    } catch (error) {
+      console.error('Error getting storage usage:', error);
+      // Fallback values
+      const used = files.reduce((total, file) => total + file.size, 0);
+      const total = 32 * 1024 * 1024 * 1024; // 32GB fallback
+      return {
+        used,
+        total,
+        available: total - used,
+        percentage: total > 0 ? (used / total) * 100 : 0,
+        formattedUsed: storageService.formatBytes(used),
+        formattedTotal: storageService.formatBytes(total),
+        formattedAvailable: storageService.formatBytes(total - used)
+      };
+    }
   };
 
   const toggleFileSelection = (fileId: string) => {
