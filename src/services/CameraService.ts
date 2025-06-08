@@ -1,3 +1,4 @@
+
 import { Camera, CameraResultType, CameraSource, Photo } from '@capacitor/camera';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Preferences } from '@capacitor/preferences';
@@ -79,7 +80,7 @@ export class CameraService {
     const fileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     // Create metadata with fallback values
-    const metadata: PhotoMetadata = {
+    const photoMetadata: PhotoMetadata = {
       width: 0, // Photo interface doesn't have width/height
       height: 0,
       size: photo.dataUrl ? new Blob([photo.dataUrl]).size : 0,
@@ -100,12 +101,14 @@ export class CameraService {
       id: fileId,
       name: fileName,
       type: 'image',
-      size: metadata.size,
+      size: photoMetadata.size,
       dateAdded: timestamp,
-      tags: ['camera', 'photo'],
-      metadata,
+      dateModified: timestamp,
+      encryptedData: photo.dataUrl || '',
       thumbnail: await this.generateThumbnail(photo.dataUrl || ''),
-      path: `secure_photos/${fileName}`
+      folderId: undefined,
+      tags: ['camera', 'photo'],
+      isFavorite: false
     };
   }
 

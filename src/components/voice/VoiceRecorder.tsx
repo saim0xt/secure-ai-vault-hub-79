@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { useVault } from '@/contexts/VaultContext';
 import { useToast } from '@/hooks/use-toast';
@@ -62,24 +63,27 @@ const VoiceRecorder = () => {
         clearInterval(timerRef.current);
       }
 
-      // Convert VaultFile back to Blob for preview using the stored base64 data
-      if (vaultFile.path) {
-        const binaryString = atob(vaultFile.path);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
+      // Convert VaultFile back to Blob for preview using the stored encrypted data
+      if (vaultFile.encryptedData) {
+        // Decrypt and convert to blob for preview
+        try {
+          const dataUrl = vaultFile.encryptedData; // This contains the base64 data
+          const response = await fetch(dataUrl);
+          const blob = await response.blob();
+          setAudioBlob(blob);
+        } catch (error) {
+          console.error('Failed to create audio blob:', error);
         }
-        const blob = new Blob([bytes], { type: 'audio/webm' });
-        setAudioBlob(blob);
       }
 
       // Auto-transcribe if enabled
-      if (autoTranscribe && vaultFile.path) {
-        await transcribeRecording(vaultFile.path);
+      if (autoTranscribe && vaultFile.encryptedData) {
+        await transcribeRecording(vaultFile.encryptedData);
       }
 
       // Save to vault
-      addFile(vaultFile);
+      const file = new File([new Blob([vaultFile.encryptedData])], vaultFile.name, { type: 'audio/webm' });
+      await addFile(file);
       
       toast({
         title: "Recording Complete",
@@ -208,9 +212,9 @@ const VoiceRecorder = () => {
   const transcribeAudioBlob = async () => {
     if (!audioBlob || !currentVaultFile) return;
     
-    // Use the stored VaultFile path data for transcription
-    if (currentVaultFile.path) {
-      await transcribeRecording(currentVaultFile.path);
+    // Use the stored VaultFile encrypted data for transcription
+    if (currentVaultFile.encryptedData) {
+      await transcribeRecording(currentVaultFile.encryptedData);
     }
   };
 

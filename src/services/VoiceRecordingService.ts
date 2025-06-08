@@ -1,3 +1,4 @@
+
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Preferences } from '@capacitor/preferences';
 import { VaultFile } from '@/contexts/VaultContext';
@@ -126,13 +127,12 @@ export class VoiceRecordingService {
       type: 'audio',
       size: blob.size,
       dateAdded: timestamp,
+      dateModified: timestamp,
+      encryptedData: base64,
+      folderId: undefined,
       tags: ['voice', 'recording'],
-      path: base64,
-      metadata: {
-        duration: await this.calculateDuration(blob),
-        format: 'webm',
-        codec: 'opus'
-      }
+      isFavorite: false,
+      thumbnail: undefined
     };
   }
 
