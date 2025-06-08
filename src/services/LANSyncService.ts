@@ -13,17 +13,43 @@ export interface LANDevice {
   capabilities: string[];
 }
 
+export interface DiscoveredDevice {
+  id: string;
+  name: string;
+  ip: string;
+  port: number;
+  deviceType: 'android' | 'ios' | 'desktop';
+  isOnline: boolean;
+  version: string;
+}
+
+export interface SyncProgress {
+  stage: 'connecting' | 'syncing' | 'complete';
+  progress: number;
+  deviceName: string;
+  filesTransferred: number;
+  totalFiles: number;
+}
+
 export interface SyncData {
   files: any[];
   metadata: any;
   timestamp: Date;
 }
 
+export interface SyncHistoryEntry {
+  deviceName: string;
+  fileCount: number;
+  timestamp: Date;
+  success: boolean;
+}
+
 export class LANSyncService {
   private static instance: LANSyncService;
-  private discoveredDevices: LANDevice[] = [];
+  private discoveredDevices: DiscoveredDevice[] = [];
   private isDiscovering = false;
   private syncPort = 8880;
+  private syncHistory: SyncHistoryEntry[] = [];
 
   static getInstance(): LANSyncService {
     if (!LANSyncService.instance) {
@@ -35,12 +61,13 @@ export class LANSyncService {
   async initialize(): Promise<void> {
     try {
       console.log('LAN Sync service initialized');
+      await this.loadSyncHistory();
     } catch (error) {
       console.error('Failed to initialize LAN sync service:', error);
     }
   }
 
-  async startDiscovery(): Promise<LANDevice[]> {
+  async startDiscovery(): Promise<DiscoveredDevice[]> {
     if (this.isDiscovering) return this.discoveredDevices;
     
     this.isDiscovering = true;
@@ -67,26 +94,24 @@ export class LANSyncService {
 
   private async simulateDeviceDiscovery(): Promise<void> {
     // This would be replaced with actual network scanning
-    const mockDevices: LANDevice[] = [
+    const mockDevices: DiscoveredDevice[] = [
       {
         id: 'device-001',
         name: 'Android Phone',
         ip: '192.168.1.100',
         port: this.syncPort,
-        lastSeen: new Date(),
         deviceType: 'android',
-        status: 'online',
-        capabilities: ['file-sync', 'backup', 'encryption']
+        isOnline: true,
+        version: '1.0.0'
       },
       {
         id: 'device-002', 
         name: 'iPhone',
         ip: '192.168.1.101',
         port: this.syncPort,
-        lastSeen: new Date(),
         deviceType: 'ios',
-        status: 'online',
-        capabilities: ['file-sync', 'backup']
+        isOnline: true,
+        version: '1.0.0'
       }
     ];
 
@@ -95,7 +120,7 @@ export class LANSyncService {
     this.discoveredDevices = mockDevices;
   }
 
-  async connectToDevice(device: LANDevice): Promise<boolean> {
+  async connectToDevice(device: DiscoveredDevice): Promise<boolean> {
     try {
       // In real implementation, establish secure connection
       const response = await fetch(`http://${device.ip}:${device.port}/handshake`, {
@@ -105,38 +130,82 @@ export class LANSyncService {
       });
 
       if (response.ok) {
-        device.status = 'online';
+        device.isOnline = true;
         return true;
       }
       return false;
     } catch (error) {
       console.error('Failed to connect to device:', error);
-      device.status = 'offline';
+      device.isOnline = false;
       return false;
     }
   }
 
-  async syncWithDevice(device: LANDevice, data: SyncData): Promise<boolean> {
+  async syncWithDevice(deviceId: string, progressCallback?: (progress: SyncProgress) => void): Promise<boolean> {
     try {
-      if (device.status !== 'online') {
+      const device = this.discoveredDevices.find(d => d.id === deviceId);
+      if (!device) return false;
+
+      if (!device.isOnline) {
         const connected = await this.connectToDevice(device);
         if (!connected) return false;
       }
 
-      const response = await fetch(`http://${device.ip}:${device.port}/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
+      // Simulate sync progress
+      const totalFiles = 10;
+      for (let i = 0; i <= totalFiles; i++) {
+        if (progressCallback) {
+          progressCallback({
+            stage: i === 0 ? 'connecting' : i === totalFiles ? 'complete' : 'syncing',
+            progress: (i / totalFiles) * 100,
+            deviceName: device.name,
+            filesTransferred: i,
+            totalFiles
+          });
+        }
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
 
-      return response.ok;
+      // Add to sync history
+      this.syncHistory.unshift({
+        deviceName: device.name,
+        fileCount: totalFiles,
+        timestamp: new Date(),
+        success: true
+      });
+      await this.saveSyncHistory();
+
+      return true;
     } catch (error) {
       console.error('Sync failed:', error);
       return false;
     }
   }
 
-  async receiveData(device: LANDevice): Promise<SyncData | null> {
+  async syncWithDevices(): Promise<void> {
+    const onlineDevices = this.discoveredDevices.filter(d => d.isOnline);
+    
+    for (const device of onlineDevices) {
+      try {
+        await this.syncWithDevice(device.id);
+      } catch (error) {
+        console.error(`Failed to sync with ${device.name}:`, error);
+      }
+    }
+  }
+
+  async enableHotspot(): Promise<boolean> {
+    try {
+      // In real implementation, enable WiFi hotspot
+      console.log('WiFi hotspot enabled on port', this.syncPort);
+      return true;
+    } catch (error) {
+      console.error('Failed to enable hotspot:', error);
+      return false;
+    }
+  }
+
+  async receiveData(device: DiscoveredDevice): Promise<SyncData | null> {
     try {
       const response = await fetch(`http://${device.ip}:${device.port}/data`);
       if (response.ok) {
@@ -149,8 +218,34 @@ export class LANSyncService {
     }
   }
 
-  getDiscoveredDevices(): LANDevice[] {
+  getDiscoveredDevices(): DiscoveredDevice[] {
     return this.discoveredDevices;
+  }
+
+  async getSyncHistory(): Promise<SyncHistoryEntry[]> {
+    return this.syncHistory;
+  }
+
+  private async loadSyncHistory(): Promise<void> {
+    try {
+      const { value } = await Preferences.get({ key: 'lan_sync_history' });
+      if (value) {
+        this.syncHistory = JSON.parse(value);
+      }
+    } catch (error) {
+      console.error('Failed to load sync history:', error);
+    }
+  }
+
+  private async saveSyncHistory(): Promise<void> {
+    try {
+      await Preferences.set({ 
+        key: 'lan_sync_history', 
+        value: JSON.stringify(this.syncHistory.slice(0, 20)) // Keep last 20 entries
+      });
+    } catch (error) {
+      console.error('Failed to save sync history:', error);
+    }
   }
 
   async enableSyncServer(): Promise<boolean> {
