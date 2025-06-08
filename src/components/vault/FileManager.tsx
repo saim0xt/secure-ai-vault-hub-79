@@ -7,19 +7,19 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
+import FileGrid from '@/components/file-viewer/FileGrid';
 import {
   ArrowLeft,
   Search,
   Folder,
-  Image,
-  Video,
   Upload,
   Plus,
-  MoreVertical,
-  Star,
-  Trash,
   RefreshCw,
-  Loader2
+  Loader2,
+  Grid3X3,
+  List,
+  Filter,
+  SortAsc
 } from 'lucide-react';
 
 const FileManager = () => {
@@ -30,10 +30,14 @@ const FileManager = () => {
     folders, 
     currentFolder, 
     setCurrentFolder, 
+    selectedFiles,
     addFile, 
     addFolder,
     deleteFile,
     toggleFavorite,
+    exportFile,
+    toggleFileSelection,
+    clearSelection,
     loading,
     refreshFiles
   } = useVault();
@@ -44,6 +48,9 @@ const FileManager = () => {
   const [newFolderName, setNewFolderName] = useState('');
   const [importing, setImporting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [sortBy, setSortBy] = useState<'name' | 'date' | 'size' | 'type'>('date');
+  const [filterType, setFilterType] = useState<'all' | 'image' | 'video' | 'audio' | 'document'>('all');
 
   useEffect(() => {
     if (folderId && folderId !== currentFolder) {
@@ -51,17 +58,35 @@ const FileManager = () => {
     }
   }, [folderId, currentFolder, setCurrentFolder]);
 
-  // Filter files and folders based on current location
+  // Filter and sort files
   const currentFiles = files.filter(file => file.folderId === currentFolder);
   const currentFolders = folders.filter(folder => folder.parentId === currentFolder);
 
-  // Search functionality
-  const filteredFiles = searchQuery
-    ? currentFiles.filter(file =>
+  const filteredFiles = currentFiles
+    .filter(file => {
+      // Search filter
+      const matchesSearch = searchQuery === '' || 
         file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        file.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
-    : currentFiles;
+        file.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+      
+      // Type filter
+      const matchesType = filterType === 'all' || file.type === filterType;
+      
+      return matchesSearch && matchesType;
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'size':
+          return b.size - a.size;
+        case 'type':
+          return a.type.localeCompare(b.type);
+        case 'date':
+        default:
+          return new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime();
+      }
+    });
 
   const filteredFolders = searchQuery
     ? currentFolders.filter(folder =>
@@ -88,7 +113,6 @@ const FileManager = () => {
         description: `${fileList.length} file(s) imported successfully`,
       });
       
-      // Clear the input
       event.target.value = '';
     } catch (error) {
       console.error('File import error:', error);
@@ -170,22 +194,20 @@ const FileManager = () => {
     }
   };
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const getFileIcon = (type: string) => {
-    switch (type) {
-      case 'image':
-        return Image;
-      case 'video':
-        return Video;
-      default:
-        return Folder;
+  const handleExportFile = async (fileId: string) => {
+    try {
+      await exportFile(fileId);
+      toast({
+        title: "Success",
+        description: "File exported successfully",
+      });
+    } catch (error) {
+      console.error('Export file error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to export file",
+        variant: "destructive",
+      });
     }
   };
 
@@ -204,7 +226,7 @@ const FileManager = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="bg-card border-b border-border p-4">
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-4 mb-4">
           <Button
             variant="ghost"
             size="icon"
@@ -217,9 +239,29 @@ const FileManager = () => {
               {currentFolder ? 'Folder' : 'File Manager'}
             </h1>
             <p className="text-sm text-muted-foreground">
-              {files.length} files • {folders.length} folders
+              {filteredFiles.length} files • {filteredFolders.length} folders
+              {selectedFiles.length > 0 && ` • ${selectedFiles.length} selected`}
             </p>
           </div>
+          
+          {/* View Controls */}
+          <div className="flex items-center space-x-2">
+            <Button
+              variant={viewMode === 'grid' ? 'default' : 'ghost'}
+              size="icon"
+              onClick={() => setViewMode('grid')}
+            >
+              <Grid3X3 className="w-4 h-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'list' ? 'default' : 'ghost'}
+              size="icon"
+              onClick={() => setViewMode('list')}
+            >
+              <List className="w-4 h-4" />
+            </Button>
+          </div>
+          
           <Button
             variant="ghost"
             size="icon"
@@ -249,15 +291,42 @@ const FileManager = () => {
           </Button>
         </div>
 
-        {/* Search Bar */}
-        <div className="mt-4 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <Input
-            placeholder="Search files and folders..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+        {/* Search and Filters */}
+        <div className="flex items-center space-x-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+            <Input
+              placeholder="Search files and folders..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          
+          {/* Sort Dropdown */}
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as any)}
+            className="bg-background border border-border rounded-md px-3 py-2 text-sm"
+          >
+            <option value="date">Sort by Date</option>
+            <option value="name">Sort by Name</option>
+            <option value="size">Sort by Size</option>
+            <option value="type">Sort by Type</option>
+          </select>
+          
+          {/* Filter Dropdown */}
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value as any)}
+            className="bg-background border border-border rounded-md px-3 py-2 text-sm"
+          >
+            <option value="all">All Files</option>
+            <option value="image">Images</option>
+            <option value="video">Videos</option>
+            <option value="audio">Audio</option>
+            <option value="document">Documents</option>
+          </select>
         </div>
       </div>
 
@@ -266,7 +335,7 @@ const FileManager = () => {
         {filteredFolders.length > 0 && (
           <div className="mb-6">
             <h3 className="text-sm font-medium text-muted-foreground mb-3">Folders</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
               {filteredFolders.map((folder, index) => (
                 <motion.div
                   key={folder.id}
@@ -275,7 +344,7 @@ const FileManager = () => {
                   transition={{ delay: index * 0.1 }}
                 >
                   <Card 
-                    className="p-4 cursor-pointer hover:shadow-lg transition-all"
+                    className="p-4 cursor-pointer hover:shadow-lg transition-all hover:scale-105"
                     onClick={() => handleFolderClick(folder.id)}
                   >
                     <div className="flex flex-col items-center text-center">
@@ -298,79 +367,14 @@ const FileManager = () => {
         {filteredFiles.length > 0 && (
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-3">Files</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {filteredFiles.map((file, index) => {
-                const FileIcon = getFileIcon(file.type);
-                return (
-                  <motion.div
-                    key={file.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                  >
-                    <Card className="p-4 cursor-pointer hover:shadow-lg transition-all group">
-                      <div className="relative">
-                        <div className="aspect-square bg-muted rounded-lg mb-3 flex items-center justify-center">
-                          <FileIcon className="w-8 h-8 text-muted-foreground" />
-                        </div>
-                        
-                        {/* File Actions */}
-                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <div className="flex space-x-1">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="w-6 h-6 bg-background/80"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleFavorite(file.id);
-                              }}
-                            >
-                              <Star className={`w-3 h-3 ${file.isFavorite ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground'}`} />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="w-6 h-6 bg-background/80"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteFile(file.id);
-                              }}
-                            >
-                              <Trash className="w-3 h-3 text-red-500" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <p className="font-medium text-foreground text-sm truncate">
-                          {file.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatFileSize(file.size)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(file.dateAdded).toLocaleDateString()}
-                        </p>
-                        {file.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {file.tags.slice(0, 2).map((tag) => (
-                              <span
-                                key={tag}
-                                className="text-xs bg-primary/20 text-primary px-1 py-0.5 rounded"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </Card>
-                  </motion.div>
-                );
-              })}
-            </div>
+            <FileGrid
+              files={filteredFiles}
+              selectedFiles={selectedFiles}
+              onFileSelect={toggleFileSelection}
+              onToggleFavorite={toggleFavorite}
+              onDeleteFile={handleDeleteFile}
+              onExportFile={handleExportFile}
+            />
           </div>
         )}
 
@@ -379,15 +383,15 @@ const FileManager = () => {
           <div className="text-center py-12">
             <Folder className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-medium text-foreground mb-2">
-              {searchQuery ? 'No results found' : 'No files yet'}
+              {searchQuery || filterType !== 'all' ? 'No results found' : 'No files yet'}
             </h3>
             <p className="text-muted-foreground mb-4">
-              {searchQuery
-                ? 'Try adjusting your search terms'
+              {searchQuery || filterType !== 'all'
+                ? 'Try adjusting your search terms or filters'
                 : 'Start by importing files or creating folders'
               }
             </p>
-            {!searchQuery && (
+            {!searchQuery && filterType === 'all' && (
               <Button 
                 onClick={() => document.getElementById('file-input')?.click()}
                 disabled={importing}
