@@ -23,6 +23,8 @@ import {
   Lock,
   Mic
 } from 'lucide-react';
+import { RealSecurityService } from '@/services/RealSecurityService';
+import { RealIntruderDetection } from '@/components/security/RealIntruderDetection';
 
 const VaultDashboard = () => {
   const navigate = useNavigate();
@@ -39,43 +41,63 @@ const VaultDashboard = () => {
     formattedTotal: '0 Bytes',
     formattedAvailable: '0 Bytes'
   });
+  const [securityStatus, setSecurityStatus] = useState({
+    monitoring: false,
+    screenshotPrevention: false,
+    stealthMode: false,
+    tamperDetection: false
+  });
+
+  const securityService = RealSecurityService.getInstance();
 
   useEffect(() => {
-    setRecentFiles(files.slice(0, 6));
-    
-    // Load storage information
-    const loadStorageInfo = async () => {
-      try {
-        const storage = await getStorageUsage();
-        setStorageInfo(storage);
-      } catch (error) {
-        console.error('Error loading storage info:', error);
-      }
-    };
-    
-    loadStorageInfo();
-    
-    // Initialize shake detection
-    const initShakeDetection = async () => {
-      try {
-        const { DeviceMotionService } = await import('@/services/DeviceMotionService');
-        await DeviceMotionService.startShakeDetection(() => {
-          // Lock vault on shake
-          logout();
-        });
-      } catch (error) {
-        console.log('Shake detection not available:', error);
-      }
-    };
-    
-    initShakeDetection();
-    
-    return () => {
-      import('@/services/DeviceMotionService').then(({ DeviceMotionService }) => {
-        DeviceMotionService.stopShakeDetection();
-      });
-    };
+    initializeVault();
   }, [files, logout, getStorageUsage]);
+
+  const initializeVault = async () => {
+    try {
+      setRecentFiles(files.slice(0, 6));
+      
+      // Load storage information
+      const storage = await getStorageUsage();
+      setStorageInfo(storage);
+
+      // Initialize real security services
+      await securityService.initialize();
+      const status = await securityService.getSecurityStatus();
+      setSecurityStatus(status);
+
+      // Setup security event listeners
+      setupSecurityListeners();
+      
+      console.log('Vault dashboard initialized with real security');
+    } catch (error) {
+      console.error('Error initializing vault:', error);
+    }
+  };
+
+  const setupSecurityListeners = () => {
+    // Listen for security alerts
+    securityService.addEventListener('security_alert', (data: any) => {
+      console.warn('Security alert received:', data);
+      // Could show toast notification here
+    });
+
+    // Listen for emergency patterns
+    securityService.addEventListener('emergency_pattern', (data: any) => {
+      console.warn('Emergency pattern detected:', data);
+      if (data.type === 'volume') {
+        // Could trigger emergency protocol
+        logout();
+      }
+    });
+
+    // Cleanup function for component unmount
+    return () => {
+      securityService.removeEventListener('security_alert', () => {});
+      securityService.removeEventListener('emergency_pattern', () => {});
+    };
+  };
 
   const quickStats = [
     {
@@ -131,11 +153,11 @@ const VaultDashboard = () => {
       color: 'from-purple-500 to-pink-600'
     },
     {
-      label: 'Rewards Center',
-      description: 'Earn coins and unlock features',
-      icon: Star,
-      action: () => navigate('/rewards'),
-      color: 'from-yellow-500 to-orange-600'
+      label: 'Security Center',
+      description: 'Manage security settings',
+      icon: Shield,
+      action: () => navigate('/security'),
+      color: 'from-red-500 to-orange-600'
     },
     {
       label: 'AI Features',
@@ -149,7 +171,6 @@ const VaultDashboard = () => {
   const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
-      // Implementation would handle file import
       console.log('Importing files:', files);
     }
   };
@@ -178,18 +199,24 @@ const VaultDashboard = () => {
               <h1 className="text-xl font-bold text-foreground">
                 {fakeVaultMode ? "Calculator" : "Vaultix"}
               </h1>
-              <p className="text-sm text-muted-foreground">Secure Vault</p>
+              <p className="text-sm text-muted-foreground">
+                {securityStatus.monitoring ? "Security Active" : "Security Inactive"}
+              </p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
+            {securityStatus.stealthMode && (
+              <Badge variant="secondary" className="text-xs">
+                STEALTH
+              </Badge>
+            )}
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => navigate('/rewards')}
+              onClick={() => navigate('/security')}
               className="relative"
             >
-              <Star className="w-5 h-5" />
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-500 rounded-full animate-pulse" />
+              <Shield className={`w-5 h-5 ${securityStatus.monitoring ? 'text-green-500' : 'text-muted-foreground'}`} />
             </Button>
             <Button
               variant="ghost"
@@ -210,6 +237,39 @@ const VaultDashboard = () => {
       </div>
 
       <div className="p-4 space-y-6">
+        {/* Security Status */}
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-foreground">Security Status</h3>
+            <div className="flex space-x-2">
+              {securityStatus.monitoring && (
+                <Badge variant="default" className="text-xs bg-green-500">
+                  MONITORING
+                </Badge>
+              )}
+              {securityStatus.screenshotPrevention && (
+                <Badge variant="default" className="text-xs bg-blue-500">
+                  PROTECTED
+                </Badge>
+              )}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="flex justify-between">
+              <span>Security Monitoring:</span>
+              <span className={securityStatus.monitoring ? 'text-green-500' : 'text-red-500'}>
+                {securityStatus.monitoring ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Screenshot Protection:</span>
+              <span className={securityStatus.screenshotPrevention ? 'text-green-500' : 'text-red-500'}>
+                {securityStatus.screenshotPrevention ? 'Enabled' : 'Disabled'}
+              </span>
+            </div>
+          </div>
+        </Card>
+
         {/* Storage Usage */}
         <Card className="p-4">
           <div className="flex items-center justify-between mb-3">
