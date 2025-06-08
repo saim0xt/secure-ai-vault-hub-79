@@ -1,38 +1,31 @@
+
 import { Preferences } from '@capacitor/preferences';
-import { Browser } from '@capacitor/browser';
-import { App } from '@capacitor/app';
+
+export interface GoogleDriveConfig {
+  clientId: string;
+  apiKey: string;
+  accessToken?: string;
+  refreshToken?: string;
+  enabled: boolean;
+}
 
 export interface DriveFile {
   id: string;
   name: string;
   mimeType: string;
-  size: number;
+  size: string;
+  createdTime: string;
   modifiedTime: string;
-  webViewLink?: string;
-}
-
-export interface SyncStatus {
-  isSync: boolean;
-  lastSync: string;
-  pendingUploads: number;
-  pendingDownloads: number;
-  totalFiles: number;
-  syncedFiles: number;
-}
-
-export interface DriveConfig {
-  clientId: string;
-  apiKey: string;
-  enabled: boolean;
 }
 
 export class GoogleDriveService {
   private static instance: GoogleDriveService;
-  private accessToken: string = '';
-  private refreshToken: string = '';
-  private config: DriveConfig = { clientId: '', apiKey: '', enabled: false };
-  private readonly SCOPES = 'https://www.googleapis.com/auth/drive.file';
-  private readonly DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'];
+  private config: GoogleDriveConfig = {
+    clientId: '',
+    apiKey: '',
+    enabled: false
+  };
+  private isAuthenticated = false;
 
   static getInstance(): GoogleDriveService {
     if (!GoogleDriveService.instance) {
@@ -42,140 +35,116 @@ export class GoogleDriveService {
   }
 
   async initialize(): Promise<void> {
-    await this.loadConfiguration();
-    await this.loadStoredTokens();
+    await this.loadConfig();
   }
 
-  async configure(clientId: string, apiKey: string): Promise<void> {
-    this.config = { clientId, apiKey, enabled: true };
-    
-    await Preferences.set({
-      key: 'google_drive_config',
-      value: JSON.stringify(this.config)
-    });
-  }
-
-  async loadConfiguration(): Promise<void> {
+  async loadConfig(): Promise<void> {
     try {
-      const { value } = await Preferences.get({ key: 'google_drive_config' });
+      const { value } = await Preferences.get({ key: 'vaultix_google_drive_config' });
       if (value) {
-        this.config = JSON.parse(value);
+        this.config = { ...this.config, ...JSON.parse(value) };
+        this.isAuthenticated = !!this.config.accessToken;
       }
     } catch (error) {
-      console.error('Failed to load Google Drive configuration:', error);
+      console.error('Failed to load Google Drive config:', error);
     }
   }
 
-  async loadStoredTokens(): Promise<boolean> {
+  async saveConfig(config: Partial<GoogleDriveConfig>): Promise<void> {
+    this.config = { ...this.config, ...config };
     try {
-      const { value } = await Preferences.get({ key: 'google_drive_tokens' });
-      if (value) {
-        const tokenData = JSON.parse(value);
-        this.accessToken = tokenData.accessToken;
-        this.refreshToken = tokenData.refreshToken;
-        
-        // Verify token is still valid
-        if (await this.verifyToken()) {
-          return true;
-        } else {
-          // Try to refresh token
-          return await this.refreshAccessToken();
-        }
-      }
-      return false;
+      await Preferences.set({
+        key: 'vaultix_google_drive_config',
+        value: JSON.stringify(this.config)
+      });
     } catch (error) {
-      console.error('Failed to load stored tokens:', error);
-      return false;
+      console.error('Failed to save Google Drive config:', error);
     }
   }
 
   async authenticate(): Promise<boolean> {
-    if (!this.config.clientId) {
-      throw new Error('Google Drive client ID not configured');
+    if (!this.config.clientId || !this.config.apiKey) {
+      throw new Error('Google Drive API credentials not configured');
     }
 
     try {
-      // Create OAuth URL
-      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+      // Implement OAuth2 flow for web
+      const authUrl = `https://accounts.google.com/oauth2/auth?` +
         `client_id=${this.config.clientId}&` +
-        `redirect_uri=http://localhost:8080/auth/callback&` +
+        `redirect_uri=${encodeURIComponent(window.location.origin)}&` +
+        `scope=${encodeURIComponent('https://www.googleapis.com/auth/drive.file')}&` +
         `response_type=code&` +
-        `scope=${encodeURIComponent(this.SCOPES)}&` +
-        `access_type=offline&` +
-        `prompt=consent`;
+        `access_type=offline`;
 
-      // Open browser for authentication
-      await Browser.open({ url: authUrl });
-
-      // Listen for app URL scheme callback
-      return new Promise((resolve) => {
-        const listener = App.addListener('appUrlOpen', async (data) => {
-          const url = new URL(data.url);
-          const code = url.searchParams.get('code');
-          
-          if (code) {
-            try {
-              await this.exchangeCodeForTokens(code);
-              listener.then(handle => handle.remove());
-              resolve(true);
-            } catch (error) {
-              console.error('Token exchange failed:', error);
-              listener.then(handle => handle.remove());
-              resolve(false);
+      // Open auth window
+      const authWindow = window.open(authUrl, '_blank', 'width=500,height=600');
+      
+      return new Promise((resolve, reject) => {
+        const checkAuth = setInterval(() => {
+          try {
+            if (authWindow?.closed) {
+              clearInterval(checkAuth);
+              reject(new Error('Authentication cancelled'));
             }
+            
+            // Check for auth code in URL
+            const url = authWindow?.location.href;
+            if (url?.includes('code=')) {
+              const code = new URL(url).searchParams.get('code');
+              if (code) {
+                authWindow.close();
+                clearInterval(checkAuth);
+                this.exchangeCodeForTokens(code).then(resolve).catch(reject);
+              }
+            }
+          } catch (error) {
+            // Cross-origin error is expected during auth flow
           }
-        });
-
-        // Timeout after 5 minutes
-        setTimeout(() => {
-          listener.then(handle => handle.remove());
-          resolve(false);
-        }, 300000);
+        }, 1000);
       });
     } catch (error) {
-      console.error('Google Drive authentication failed:', error);
+      console.error('Authentication failed:', error);
       return false;
     }
   }
 
-  private async exchangeCodeForTokens(code: string): Promise<void> {
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: new URLSearchParams({
-        client_id: this.config.clientId,
-        code,
-        grant_type: 'authorization_code',
-        redirect_uri: 'http://localhost:8080/auth/callback'
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Token exchange failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-    this.accessToken = data.access_token;
-    this.refreshToken = data.refresh_token;
-    
-    await this.saveTokens();
-  }
-
-  private async verifyToken(): Promise<boolean> {
-    if (!this.accessToken) return false;
-
+  private async exchangeCodeForTokens(code: string): Promise<boolean> {
     try {
-      const response = await fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${this.accessToken}`);
-      return response.ok;
+      const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          client_id: this.config.clientId,
+          client_secret: '', // This should be handled server-side in production
+          code,
+          grant_type: 'authorization_code',
+          redirect_uri: window.location.origin
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Token exchange failed');
+      }
+
+      const tokens = await response.json();
+      
+      await this.saveConfig({
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token
+      });
+
+      this.isAuthenticated = true;
+      return true;
     } catch (error) {
+      console.error('Token exchange failed:', error);
       return false;
     }
   }
 
-  async uploadFile(fileName: string, content: string, mimeType: string = 'application/octet-stream'): Promise<DriveFile> {
-    if (!this.accessToken) {
+  async uploadFile(fileName: string, content: string, mimeType: string = 'application/octet-stream'): Promise<string> {
+    if (!this.isAuthenticated || !this.config.accessToken) {
       throw new Error('Not authenticated with Google Drive');
     }
 
@@ -183,44 +152,31 @@ export class GoogleDriveService {
       // Create file metadata
       const metadata = {
         name: fileName,
-        parents: ['appDataFolder']
+        parents: ['appDataFolder'] // Store in app data folder for security
       };
 
-      // Upload file using multipart upload
-      const boundary = '-------314159265358979323846';
-      const delimiter = `\r\n--${boundary}\r\n`;
-      const close_delim = `\r\n--${boundary}--`;
-
-      const body = 
-        delimiter +
-        'Content-Type: application/json\r\n\r\n' +
-        JSON.stringify(metadata) +
-        delimiter +
-        `Content-Type: ${mimeType}\r\n\r\n` +
-        content +
-        close_delim;
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+      form.append('file', new Blob([content], { type: mimeType }));
 
       const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Content-Type': `multipart/related; boundary="${boundary}"`
+          'Authorization': `Bearer ${this.config.accessToken}`
         },
-        body
+        body: form
       });
 
       if (!response.ok) {
         if (response.status === 401) {
-          // Token expired, try to refresh
-          if (await this.refreshAccessToken()) {
-            return this.uploadFile(fileName, content, mimeType);
-          }
+          await this.refreshAccessToken();
+          return this.uploadFile(fileName, content, mimeType); // Retry
         }
         throw new Error(`Upload failed: ${response.status}`);
       }
 
       const result = await response.json();
-      return this.mapDriveFile(result);
+      return result.id;
     } catch (error) {
       console.error('File upload failed:', error);
       throw new Error('Failed to upload file to Google Drive');
@@ -228,22 +184,21 @@ export class GoogleDriveService {
   }
 
   async downloadFile(fileId: string): Promise<string> {
-    if (!this.accessToken) {
+    if (!this.isAuthenticated || !this.config.accessToken) {
       throw new Error('Not authenticated with Google Drive');
     }
 
     try {
       const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
         headers: {
-          'Authorization': `Bearer ${this.accessToken}`
+          'Authorization': `Bearer ${this.config.accessToken}`
         }
       });
 
       if (!response.ok) {
         if (response.status === 401) {
-          if (await this.refreshAccessToken()) {
-            return this.downloadFile(fileId);
-          }
+          await this.refreshAccessToken();
+          return this.downloadFile(fileId); // Retry
         }
         throw new Error(`Download failed: ${response.status}`);
       }
@@ -256,42 +211,35 @@ export class GoogleDriveService {
   }
 
   async listFiles(): Promise<DriveFile[]> {
-    if (!this.accessToken) {
+    if (!this.isAuthenticated || !this.config.accessToken) {
       throw new Error('Not authenticated with Google Drive');
     }
 
     try {
-      const response = await fetch(
-        `https://www.googleapis.com/drive/v3/files?` +
-        `q=parents in 'appDataFolder'&` +
-        `fields=files(id,name,mimeType,size,modifiedTime,webViewLink)&` +
-        `orderBy=modifiedTime desc`,
-        {
-          headers: {
-            'Authorization': `Bearer ${this.accessToken}`
-          }
+      const response = await fetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name,mimeType,size,createdTime,modifiedTime)', {
+        headers: {
+          'Authorization': `Bearer ${this.config.accessToken}`
         }
-      );
+      });
 
       if (!response.ok) {
         if (response.status === 401) {
-          if (await this.refreshAccessToken()) {
-            return this.listFiles();
-          }
+          await this.refreshAccessToken();
+          return this.listFiles(); // Retry
         }
         throw new Error(`List files failed: ${response.status}`);
       }
 
       const result = await response.json();
-      return result.files.map((file: any) => this.mapDriveFile(file));
+      return result.files || [];
     } catch (error) {
-      console.error('Failed to list files:', error);
-      return [];
+      console.error('List files failed:', error);
+      throw new Error('Failed to list files from Google Drive');
     }
   }
 
   async deleteFile(fileId: string): Promise<void> {
-    if (!this.accessToken) {
+    if (!this.isAuthenticated || !this.config.accessToken) {
       throw new Error('Not authenticated with Google Drive');
     }
 
@@ -299,15 +247,14 @@ export class GoogleDriveService {
       const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${this.accessToken}`
+          'Authorization': `Bearer ${this.config.accessToken}`
         }
       });
 
       if (!response.ok) {
         if (response.status === 401) {
-          if (await this.refreshAccessToken()) {
-            return this.deleteFile(fileId);
-          }
+          await this.refreshAccessToken();
+          return this.deleteFile(fileId); // Retry
         }
         throw new Error(`Delete failed: ${response.status}`);
       }
@@ -317,133 +264,45 @@ export class GoogleDriveService {
     }
   }
 
-  async syncVaultData(vaultData: any): Promise<void> {
-    try {
-      const dataString = JSON.stringify(vaultData);
-      const fileName = `vault_sync_${new Date().toISOString().split('T')[0]}.json`;
-      
-      await this.uploadFile(fileName, dataString, 'application/json');
-      
-      await Preferences.set({
-        key: 'last_drive_sync',
-        value: new Date().toISOString()
-      });
-
-      // Update sync status
-      await this.updateSyncStatus();
-    } catch (error) {
-      console.error('Vault sync failed:', error);
-      throw new Error('Failed to sync vault data');
-    }
-  }
-
-  async getSyncStatus(): Promise<SyncStatus> {
-    try {
-      const { value } = await Preferences.get({ key: 'last_drive_sync' });
-      const lastSync = value || 'Never';
-      
-      const files = await this.listFiles();
-      const vaultFiles = files.filter(f => f.name.includes('vault_sync'));
-      
-      return {
-        isSync: this.accessToken !== '',
-        lastSync,
-        pendingUploads: 0,
-        pendingDownloads: 0,
-        totalFiles: files.length,
-        syncedFiles: vaultFiles.length
-      };
-    } catch (error) {
-      return {
-        isSync: false,
-        lastSync: 'Never',
-        pendingUploads: 0,
-        pendingDownloads: 0,
-        totalFiles: 0,
-        syncedFiles: 0
-      };
-    }
-  }
-
-  async refreshAccessToken(): Promise<boolean> {
-    if (!this.refreshToken || !this.config.clientId) {
-      return false;
+  private async refreshAccessToken(): Promise<void> {
+    if (!this.config.refreshToken) {
+      throw new Error('No refresh token available');
     }
 
     try {
       const response = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
+          'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
           client_id: this.config.clientId,
-          refresh_token: this.refreshToken,
+          refresh_token: this.config.refreshToken,
           grant_type: 'refresh_token'
         })
       });
 
       if (!response.ok) {
-        throw new Error(`Token refresh failed: ${response.status}`);
+        throw new Error('Token refresh failed');
       }
 
-      const data = await response.json();
-      this.accessToken = data.access_token;
+      const tokens = await response.json();
       
-      if (data.refresh_token) {
-        this.refreshToken = data.refresh_token;
-      }
-      
-      await this.saveTokens();
-      return true;
+      await this.saveConfig({
+        accessToken: tokens.access_token
+      });
     } catch (error) {
       console.error('Token refresh failed:', error);
-      // Clear invalid tokens
-      this.accessToken = '';
-      this.refreshToken = '';
-      await this.clearTokens();
-      return false;
+      this.isAuthenticated = false;
+      throw new Error('Authentication expired, please re-authenticate');
     }
   }
 
-  private async saveTokens(): Promise<void> {
-    await Preferences.set({
-      key: 'google_drive_tokens',
-      value: JSON.stringify({
-        accessToken: this.accessToken,
-        refreshToken: this.refreshToken
-      })
-    });
-  }
-
-  private async clearTokens(): Promise<void> {
-    await Preferences.remove({ key: 'google_drive_tokens' });
-  }
-
-  private async updateSyncStatus(): Promise<void> {
-    const status = await this.getSyncStatus();
-    await Preferences.set({
-      key: 'google_drive_sync_status',
-      value: JSON.stringify(status)
-    });
-  }
-
-  private mapDriveFile(file: any): DriveFile {
-    return {
-      id: file.id,
-      name: file.name,
-      mimeType: file.mimeType,
-      size: parseInt(file.size || '0'),
-      modifiedTime: file.modifiedTime,
-      webViewLink: file.webViewLink
-    };
-  }
-
   isAuthenticated(): boolean {
-    return this.accessToken !== '';
+    return this.isAuthenticated && !!this.config.accessToken;
   }
 
-  getConfig(): DriveConfig {
+  getConfig(): GoogleDriveConfig {
     return { ...this.config };
   }
 }

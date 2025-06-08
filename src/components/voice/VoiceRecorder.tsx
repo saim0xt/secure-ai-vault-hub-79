@@ -4,54 +4,37 @@ import { useVault } from '@/contexts/VaultContext';
 import { useToast } from '@/hooks/use-toast';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Mic, Square, Play, Pause } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { ArrowLeft, Mic, Square, Play, Pause, FileText, Volume2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { VoiceRecordingService } from '@/services/VoiceRecordingService';
+import { AIAPIService } from '@/services/AIAPIService';
+import { AdMobService } from '@/services/AdMobService';
 
 const VoiceRecorder = () => {
   const navigate = useNavigate();
   const { addFile } = useVault();
   const { toast } = useToast();
   const [isRecording, setIsRecording] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcription, setTranscription] = useState('');
+  const [autoTranscribe, setAutoTranscribe] = useState(true);
+  const [isGeneratingSpeech, setIsGeneratingSpeech] = useState(false);
   
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const voiceService = VoiceRecordingService.getInstance();
+  const aiService = AIAPIService.getInstance();
+  const adMobService = AdMobService.getInstance();
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 44100
-        } 
-      });
-      
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
-      
-      mediaRecorderRef.current = mediaRecorder;
-      chunksRef.current = [];
-      
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
-      };
-      
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        setAudioBlob(blob);
-        stream.getTracks().forEach(track => track.stop());
-      };
-      
-      mediaRecorder.start(1000); // Collect data every second
+      await voiceService.startRecording();
       setIsRecording(true);
       setRecordingTime(0);
+      setTranscription('');
+      setAudioBlob(null);
       
       // Start timer
       timerRef.current = setInterval(() => {
@@ -59,53 +42,133 @@ const VoiceRecorder = () => {
       }, 1000);
       
     } catch (error) {
-      console.error('Microphone access denied:', error);
+      console.error('Recording start failed:', error);
       toast({
-        title: "Microphone Error",
+        title: "Recording Error",
         description: "Please allow microphone access to record audio",
         variant: "destructive",
       });
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
+  const stopRecording = async () => {
+    try {
+      const vaultFile = await voiceService.stopRecording();
       setIsRecording(false);
-      setIsPaused(false);
       
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
-    }
-  };
 
-  const saveRecording = async () => {
-    if (!audioBlob) return;
-    
-    try {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const fileName = `voice_note_${timestamp}.webm`;
-      const file = new File([audioBlob], fileName, { type: 'audio/webm' });
-      
-      await addFile(file);
+      // Convert VaultFile back to Blob for preview
+      const binaryString = atob(vaultFile.data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'audio/webm' });
+      setAudioBlob(blob);
+
+      // Auto-transcribe if enabled
+      if (autoTranscribe) {
+        await transcribeRecording(vaultFile.data);
+      }
+
+      // Save to vault
+      await addFile(vaultFile);
       
       toast({
-        title: "Recording Saved",
-        description: "Voice note saved securely to vault",
+        title: "Recording Complete",
+        description: "Voice recording saved successfully",
       });
-      
-      // Reset state
-      setAudioBlob(null);
-      setRecordingTime(0);
-      
+
     } catch (error) {
-      console.error('Save error:', error);
+      console.error('Recording stop failed:', error);
       toast({
-        title: "Save Error",
+        title: "Recording Error",
         description: "Failed to save recording",
         variant: "destructive",
       });
+    }
+  };
+
+  const transcribeRecording = async (audioData: string) => {
+    const config = aiService.getConfig();
+    if (!config.googleCloudKey) {
+      toast({
+        title: "API Key Required",
+        description: "Please configure Google Cloud API key in settings",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsTranscribing(true);
+    try {
+      const transcriptionText = await aiService.transcribeAudio(audioData);
+      setTranscription(transcriptionText);
+      
+      if (transcriptionText) {
+        toast({
+          title: "Transcription Complete",
+          description: "Audio has been transcribed successfully",
+        });
+      } else {
+        toast({
+          title: "No Speech Detected",
+          description: "No speech was detected in the recording",
+        });
+      }
+    } catch (error) {
+      console.error('Transcription failed:', error);
+      toast({
+        title: "Transcription Error",
+        description: "Failed to transcribe audio. Check your API configuration.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const generateSpeechFromText = async () => {
+    if (!transcription) return;
+
+    const config = aiService.getConfig();
+    if (!config.elevenLabsKey) {
+      toast({
+        title: "API Key Required",
+        description: "Please configure ElevenLabs API key in settings",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGeneratingSpeech(true);
+    try {
+      const audioDataUrl = await aiService.generateSpeech({
+        text: transcription,
+        voice: '9BWtsMINqrJLrRacOk9x', // Aria voice
+        model: 'eleven_multilingual_v2'
+      });
+
+      // Play the generated speech
+      const audio = new Audio(audioDataUrl);
+      audio.play();
+
+      toast({
+        title: "Speech Generated",
+        description: "Text has been converted to speech",
+      });
+    } catch (error) {
+      console.error('Speech generation failed:', error);
+      toast({
+        title: "Speech Generation Error",
+        description: "Failed to generate speech. Check your API configuration.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingSpeech(false);
     }
   };
 
@@ -118,6 +181,23 @@ const VoiceRecorder = () => {
   const discardRecording = () => {
     setAudioBlob(null);
     setRecordingTime(0);
+    setTranscription('');
+  };
+
+  const showRewardedAd = async () => {
+    try {
+      const result = await adMobService.showRewardedAd();
+      if (result.rewarded) {
+        toast({
+          title: "Reward Earned!",
+          description: "Thank you for watching the ad! Premium features unlocked temporarily.",
+        });
+        return true;
+      }
+    } catch (error) {
+      console.error('Ad failed:', error);
+    }
+    return false;
   };
 
   return (
@@ -151,6 +231,7 @@ const VoiceRecorder = () => {
               </p>
             </div>
 
+            {/* Recording Controls */}
             <div className="space-y-4">
               {!isRecording && !audioBlob && (
                 <Button
@@ -177,13 +258,6 @@ const VoiceRecorder = () => {
 
               {audioBlob && (
                 <div className="space-y-3">
-                  <Button
-                    onClick={saveRecording}
-                    className="w-full"
-                    size="lg"
-                  >
-                    Save to Vault
-                  </Button>
                   <div className="flex space-x-2">
                     <Button
                       onClick={startRecording}
@@ -204,9 +278,71 @@ const VoiceRecorder = () => {
               )}
             </div>
 
+            {/* Settings */}
+            <div className="pt-4 border-t border-border space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="text-left">
+                  <label className="text-sm font-medium">Auto Transcribe</label>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically convert speech to text
+                  </p>
+                </div>
+                <Switch
+                  checked={autoTranscribe}
+                  onCheckedChange={setAutoTranscribe}
+                />
+              </div>
+            </div>
+
+            {/* Transcription Results */}
+            {(transcription || isTranscribing) && (
+              <Card className="p-4 bg-muted">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    <span className="text-sm font-medium">Transcription</span>
+                  </div>
+                  
+                  {isTranscribing ? (
+                    <div className="text-center">
+                      <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Transcribing audio...</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-sm text-left">{transcription}</p>
+                      <Button
+                        onClick={generateSpeechFromText}
+                        disabled={isGeneratingSpeech}
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                      >
+                        <Volume2 className="w-4 h-4 mr-2" />
+                        {isGeneratingSpeech ? 'Generating...' : 'Convert to Speech'}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
+            {/* Manual Transcription Button */}
+            {audioBlob && !autoTranscribe && !transcription && (
+              <Button
+                onClick={() => transcribeRecording(btoa(String.fromCharCode(...new Uint8Array(audioBlob))))}
+                disabled={isTranscribing}
+                variant="outline"
+                className="w-full"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                {isTranscribing ? 'Transcribing...' : 'Transcribe Audio'}
+              </Button>
+            )}
+
             <div className="pt-4 border-t border-border">
               <p className="text-sm text-muted-foreground">
-                🎤 High-quality voice recording with noise cancellation
+                🎤 High-quality voice recording with AI transcription
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 🔒 Recordings are encrypted and stored securely

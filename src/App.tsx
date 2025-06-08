@@ -1,4 +1,3 @@
-
 import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -29,6 +28,7 @@ import RecycleBin from "./components/vault/RecycleBin";
 import RewardsCenter from "./components/rewards/RewardsCenter";
 import TestingSuite from "./components/testing/TestingSuite";
 import LANSyncManager from "./components/network/LANSyncManager";
+import APIConfiguration from "./components/settings/APIConfiguration";
 
 // Providers
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -166,6 +166,11 @@ const AppContent = () => {
         <Route path="/settings" element={
           <ProtectedRoute>
             <Settings />
+          </ProtectedRoute>
+        } />
+        <Route path="/api-config" element={
+          <ProtectedRoute>
+            <APIConfiguration />
           </ProtectedRoute>
         } />
         <Route path="/biometric-settings" element={

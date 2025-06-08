@@ -6,6 +6,7 @@ export interface AdMobConfig {
   bannerAdUnitId: string;
   interstitialAdUnitId: string;
   rewardedAdUnitId: string;
+  nativeAdUnitId: string;
   testDeviceIds: string[];
   enabled: boolean;
 }
@@ -20,12 +21,13 @@ export interface AdRevenue {
 export class AdMobService {
   private static instance: AdMobService;
   private config: AdMobConfig = {
-    appId: '',
-    bannerAdUnitId: '',
-    interstitialAdUnitId: '',
-    rewardedAdUnitId: '',
+    appId: 'ca-app-pub-3940256099942544~3347511713',
+    bannerAdUnitId: 'ca-app-pub-3940256099942544/6300978111',
+    interstitialAdUnitId: 'ca-app-pub-3940256099942544/1033173712',
+    rewardedAdUnitId: 'ca-app-pub-3940256099942544/5224354917',
+    nativeAdUnitId: 'ca-app-pub-3940256099942544/2247696110',
     testDeviceIds: [],
-    enabled: false
+    enabled: true
   };
   private isInitialized = false;
   private bannerVisible = false;
@@ -69,6 +71,9 @@ export class AdMobService {
       const { value } = await Preferences.get({ key: 'vaultix_admob_config' });
       if (value) {
         this.config = { ...this.config, ...JSON.parse(value) };
+      } else {
+        // Save default config with your ad unit IDs
+        await this.saveConfig(this.config);
       }
     } catch (error) {
       console.error('Failed to load AdMob config:', error);
