@@ -13,10 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: '18'
         cache: 'npm'
@@ -24,34 +24,33 @@ jobs:
     - name: Install dependencies
       run: npm ci
     
-    - name: Build web app
+    - name: Build web application
       run: npm run build
     
-    - name: Setup Java
-      uses: actions/setup-java@v3
+    - name: Setup Java JDK
+      uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
     
     - name: Setup Android SDK
-      uses: android-actions/setup-android@v2
+      uses: android-actions/setup-android@v3
     
-    - name: Install Capacitor CLI
-      run: npm install -g @capacitor/cli
-    
-    - name: Add Android platform
-      run: npx cap add android
-    
-    - name: Sync Capacitor
+    - name: Sync Capacitor to Android
       run: npx cap sync android
+    
+    - name: Make gradlew executable
+      run: chmod +x android/gradlew
     
     - name: Build Android APK
       run: |
         cd android
-        ./gradlew assembleDebug
+        ./gradlew assembleDebug --no-daemon
     
-    - name: Upload APK
-      uses: actions/upload-artifact@v3
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
       with:
-        name: vaultix-debug.apk
+        name: vaultix-secure-debug-apk
         path: android/app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 30
+
