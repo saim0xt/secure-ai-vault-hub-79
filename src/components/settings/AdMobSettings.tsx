@@ -17,6 +17,7 @@ export default function AdMobSettings() {
     bannerAdUnitId: '',
     interstitialAdUnitId: '',
     rewardedAdUnitId: '',
+    nativeAdUnitId: '',
     testDeviceIds: [],
     enabled: false
   });

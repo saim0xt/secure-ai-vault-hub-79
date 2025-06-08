@@ -79,10 +79,10 @@ export class CameraService {
     const fileName = `photo_${Date.now()}.jpg`;
     const fileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // Create metadata
+    // Create metadata with fallback values
     const metadata: PhotoMetadata = {
-      width: photo.width || 0,
-      height: photo.height || 0,
+      width: 0, // Photo interface doesn't have width/height
+      height: 0,
       size: photo.dataUrl ? new Blob([photo.dataUrl]).size : 0,
       timestamp
     };
@@ -100,7 +100,7 @@ export class CameraService {
     return {
       id: fileId,
       name: fileName,
-      type: 'image/jpeg',
+      type: 'image' as const,
       size: metadata.size,
       dateAdded: timestamp,
       encrypted: true,

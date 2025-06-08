@@ -25,7 +25,7 @@ export class GoogleDriveService {
     apiKey: '',
     enabled: false
   };
-  private isAuthenticated = false;
+  private authenticated = false;
 
   static getInstance(): GoogleDriveService {
     if (!GoogleDriveService.instance) {
@@ -43,11 +43,16 @@ export class GoogleDriveService {
       const { value } = await Preferences.get({ key: 'vaultix_google_drive_config' });
       if (value) {
         this.config = { ...this.config, ...JSON.parse(value) };
-        this.isAuthenticated = !!this.config.accessToken;
+        this.authenticated = !!this.config.accessToken;
       }
     } catch (error) {
       console.error('Failed to load Google Drive config:', error);
     }
+  }
+
+  async loadStoredTokens(): Promise<boolean> {
+    await this.loadConfig();
+    return !!this.config.accessToken;
   }
 
   async saveConfig(config: Partial<GoogleDriveConfig>): Promise<void> {
@@ -60,6 +65,10 @@ export class GoogleDriveService {
     } catch (error) {
       console.error('Failed to save Google Drive config:', error);
     }
+  }
+
+  async configure(config: Partial<GoogleDriveConfig>): Promise<void> {
+    await this.saveConfig(config);
   }
 
   async authenticate(): Promise<boolean> {
@@ -135,7 +144,7 @@ export class GoogleDriveService {
         refreshToken: tokens.refresh_token
       });
 
-      this.isAuthenticated = true;
+      this.authenticated = true;
       return true;
     } catch (error) {
       console.error('Token exchange failed:', error);
@@ -144,7 +153,7 @@ export class GoogleDriveService {
   }
 
   async uploadFile(fileName: string, content: string, mimeType: string = 'application/octet-stream'): Promise<string> {
-    if (!this.isAuthenticated || !this.config.accessToken) {
+    if (!this.authenticated || !this.config.accessToken) {
       throw new Error('Not authenticated with Google Drive');
     }
 
@@ -184,7 +193,7 @@ export class GoogleDriveService {
   }
 
   async downloadFile(fileId: string): Promise<string> {
-    if (!this.isAuthenticated || !this.config.accessToken) {
+    if (!this.authenticated || !this.config.accessToken) {
       throw new Error('Not authenticated with Google Drive');
     }
 
@@ -211,7 +220,7 @@ export class GoogleDriveService {
   }
 
   async listFiles(): Promise<DriveFile[]> {
-    if (!this.isAuthenticated || !this.config.accessToken) {
+    if (!this.authenticated || !this.config.accessToken) {
       throw new Error('Not authenticated with Google Drive');
     }
 
@@ -239,7 +248,7 @@ export class GoogleDriveService {
   }
 
   async deleteFile(fileId: string): Promise<void> {
-    if (!this.isAuthenticated || !this.config.accessToken) {
+    if (!this.authenticated || !this.config.accessToken) {
       throw new Error('Not authenticated with Google Drive');
     }
 
@@ -293,13 +302,13 @@ export class GoogleDriveService {
       });
     } catch (error) {
       console.error('Token refresh failed:', error);
-      this.isAuthenticated = false;
+      this.authenticated = false;
       throw new Error('Authentication expired, please re-authenticate');
     }
   }
 
   isAuthenticated(): boolean {
-    return this.isAuthenticated && !!this.config.accessToken;
+    return this.authenticated && !!this.config.accessToken;
   }
 
   getConfig(): GoogleDriveConfig {

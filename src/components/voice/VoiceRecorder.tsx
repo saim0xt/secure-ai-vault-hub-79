@@ -75,7 +75,7 @@ const VoiceRecorder = () => {
       }
 
       // Save to vault
-      await addFile(vaultFile);
+      addFile(vaultFile);
       
       toast({
         title: "Recording Complete",
@@ -198,6 +198,15 @@ const VoiceRecorder = () => {
       console.error('Ad failed:', error);
     }
     return false;
+  };
+
+  const transcribeAudioBlob = async () => {
+    if (!audioBlob) return;
+    
+    // Convert blob to base64
+    const arrayBuffer = await audioBlob.arrayBuffer();
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    await transcribeRecording(base64);
   };
 
   return (
@@ -330,7 +339,7 @@ const VoiceRecorder = () => {
             {/* Manual Transcription Button */}
             {audioBlob && !autoTranscribe && !transcription && (
               <Button
-                onClick={() => transcribeRecording(btoa(String.fromCharCode(...new Uint8Array(audioBlob))))}
+                onClick={transcribeAudioBlob}
                 disabled={isTranscribing}
                 variant="outline"
                 className="w-full"

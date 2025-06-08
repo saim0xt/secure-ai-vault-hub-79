@@ -124,7 +124,7 @@ export class VoiceRecordingService {
     return {
       id: fileId,
       name: fileName,
-      type: 'audio/webm',
+      type: 'audio' as const,
       size: blob.size,
       dateAdded: timestamp,
       encrypted: true,
