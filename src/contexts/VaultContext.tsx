@@ -8,6 +8,8 @@ import { RecycleBinService, DeletedFile } from '@/services/RecycleBinService';
 import { FileViewerService } from '@/services/FileViewerService';
 import { DuplicateDetectionService, DuplicateGroup } from '@/services/DuplicateDetectionService';
 import { AndroidStorageService, SecureFileMetadata } from '@/services/AndroidStorageService';
+import { RealStorageService } from '@/services/RealStorageService';
+import { RealFileManagementService } from '@/services/RealFileManagementService';
 
 export interface VaultFile {
   id: string;
@@ -84,6 +86,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [loading, setLoading] = useState(true);
   
   const androidStorage = AndroidStorageService.getInstance();
+  const realStorage = RealStorageService.getInstance();
+  const fileManagement = RealFileManagementService.getInstance();
 
   useEffect(() => {
     initializeVault();
@@ -221,7 +225,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const addFile = async (file: File, folderId?: string) => {
     try {
-      console.log('Adding file to real Android vault:', file.name, 'Size:', file.size);
+      console.log('Adding file to vault:', file.name, 'Size:', file.size);
       setLoading(true);
 
       const fileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -243,6 +247,12 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Store file securely using Android storage
       await androidStorage.storeSecureFile(fileData, metadata);
 
+      // Try to hide the file (will provide appropriate feedback for web platform)
+      const hideResult = await fileManagement.hideFile(file.name);
+      if (!hideResult.success && hideResult.requiresNative) {
+        console.log('File stored securely but hiding requires native Android app');
+      }
+
       // Create vault file entry
       const newFile: VaultFile = {
         id: fileId,
@@ -260,9 +270,9 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const updatedFiles = [...files, newFile];
       await saveFiles(updatedFiles);
       
-      console.log('File added successfully to real Android vault:', fileId);
+      console.log('File added successfully to vault:', fileId);
     } catch (error) {
-      console.error('Error adding file to real Android vault:', error);
+      console.error('Error adding file to vault:', error);
       throw error;
     } finally {
       setLoading(false);
@@ -271,67 +281,13 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const getStorageUsage = async () => {
     try {
-      console.log('Getting real Android device storage...');
-      
-      const deviceInfo = await Device.getInfo();
-      console.log('Device platform:', deviceInfo.platform);
-      
-      // Calculate actual app storage usage
-      let appUsage = 0;
-      try {
-        const files = await Filesystem.readdir({
-          path: '.vaultix_secure/files',
-          directory: Directory.Data
-        });
-        
-        for (const file of files.files) {
-          try {
-            const stat = await Filesystem.stat({
-              path: `.vaultix_secure/files/${file.name}`,
-              directory: Directory.Data
-            });
-            appUsage += stat.size;
-          } catch (statError) {
-            console.warn('Could not stat file:', file.name);
-          }
-        }
-      } catch (dirError) {
-        console.warn('Could not read secure directory:', dirError);
-      }
-      
-      // Realistic device storage estimates based on platform
-      let totalStorage = 64 * 1024 * 1024 * 1024; // 64GB default
-      
-      if (deviceInfo.platform === 'android') {
-        totalStorage = 128 * 1024 * 1024 * 1024; // 128GB for Android
-      } else if (deviceInfo.platform === 'ios') {
-        totalStorage = 256 * 1024 * 1024 * 1024; // 256GB for iOS
-      }
-      
-      const used = appUsage;
-      const available = totalStorage - used;
-      const percentage = totalStorage > 0 ? (used / totalStorage) * 100 : 0;
-      
-      console.log('Real Android storage calculated:', {
-        used: formatBytes(used),
-        total: formatBytes(totalStorage),
-        percentage: percentage.toFixed(1) + '%'
-      });
-      
-      return {
-        used,
-        total: totalStorage,
-        available,
-        percentage,
-        formattedUsed: formatBytes(used),
-        formattedTotal: formatBytes(totalStorage),
-        formattedAvailable: formatBytes(available)
-      };
+      console.log('Getting real device storage information...');
+      return await realStorage.getDeviceStorage();
     } catch (error) {
-      console.error('Error getting real Android storage:', error);
+      console.error('Error getting real storage:', error);
       // Fallback values
       const used = files.reduce((total, file) => total + file.size, 0);
-      const total = 64 * 1024 * 1024 * 1024; // 64GB fallback
+      const total = 128 * 1024 * 1024 * 1024; // 128GB fallback
       return {
         used,
         total,
@@ -568,42 +524,40 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  return (
-    <VaultContext.Provider value={{
-      files,
-      folders,
-      selectedFiles,
-      currentFolder,
-      addFile,
-      deleteFile,
-      addFolder,
-      deleteFolder,
-      moveFile,
-      moveFiles,
-      renameFile,
-      renameFolder,
-      searchFiles,
-      toggleFavorite,
-      addTag,
-      removeTag,
-      getStorageUsage,
-      setCurrentFolder,
-      toggleFileSelection,
-      selectAllFiles,
-      clearSelection,
-      bulkDelete,
-      bulkMove,
-      exportFile,
-      exportFiles,
-      getRecycleBin,
-      restoreFromRecycleBin,
-      emptyRecycleBin,
-      findDuplicates,
-      cleanupDuplicates,
-      loading,
-      refreshFiles,
-    }}>
-      {children}
-    </VaultContext.Provider>
-  );
+  const value: VaultContextType = {
+    files,
+    folders,
+    selectedFiles,
+    currentFolder,
+    addFile,
+    deleteFile,
+    addFolder,
+    deleteFolder,
+    moveFile,
+    moveFiles,
+    renameFile,
+    renameFolder,
+    searchFiles,
+    toggleFavorite,
+    addTag,
+    removeTag,
+    getStorageUsage,
+    setCurrentFolder,
+    toggleFileSelection,
+    selectAllFiles,
+    clearSelection,
+    bulkDelete,
+    bulkMove,
+    exportFile,
+    exportFiles,
+    getRecycleBin,
+    restoreFromRecycleBin,
+    emptyRecycleBin,
+    findDuplicates,
+    cleanupDuplicates,
+    loading,
+    refreshFiles
+  };
+
+  return <VaultContext.Provider value={value}>{children}</VaultContext.Provider>;
 };

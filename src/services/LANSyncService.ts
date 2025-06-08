@@ -1,3 +1,5 @@
+import { RealLANDiscoveryService, RealLANDevice } from './RealLANDiscoveryService';
+import { DeviceDetectionService } from './DeviceDetectionService';
 
 export interface LANDevice {
   id: string;
@@ -30,7 +32,8 @@ export interface SyncProgress {
 
 export class LANSyncService {
   private static instance: LANSyncService;
-  private discoveredDevices: DiscoveredDevice[] = [];
+  private discoveryService = RealLANDiscoveryService.getInstance();
+  private deviceDetection = DeviceDetectionService.getInstance();
   
   static getInstance(): LANSyncService {
     if (!LANSyncService.instance) {
@@ -41,36 +44,43 @@ export class LANSyncService {
 
   async initialize(): Promise<void> {
     try {
-      console.log('LAN Sync service initialized');
-      // Initialize discovery service
-      await this.startDiscovery();
+      console.log('Initializing real LAN Sync service...');
+      
+      const capabilities = await this.deviceDetection.getCapabilities();
+      console.log('Device capabilities:', capabilities);
+      
+      if (capabilities.supportsLANDiscovery) {
+        await this.startDiscovery();
+      } else {
+        console.log('LAN discovery not supported on this platform');
+      }
     } catch (error) {
-      console.error('Failed to initialize LAN sync:', error);
+      console.error('Failed to initialize real LAN sync:', error);
     }
   }
 
   async startDiscovery(): Promise<void> {
     try {
-      // Simulate device discovery
-      this.discoveredDevices = [
-        {
-          id: 'device1',
-          name: 'Android Device',
-          ip: '192.168.1.100',
-          port: 8080,
-          deviceType: 'android',
-          isOnline: true,
-          version: '1.0.0'
-        }
-      ];
-      console.log('Device discovery started');
+      console.log('Starting real device discovery...');
+      await this.discoveryService.startDiscovery();
     } catch (error) {
-      console.error('Failed to start discovery:', error);
+      console.error('Failed to start real discovery:', error);
     }
   }
 
   getDiscoveredDevices(): DiscoveredDevice[] {
-    return this.discoveredDevices;
+    const realDevices = this.discoveryService.getDiscoveredDevices();
+    
+    // Convert to the expected format
+    return realDevices.map(device => ({
+      id: device.id,
+      name: device.name,
+      ip: device.ip,
+      port: device.port,
+      deviceType: device.deviceType,
+      isOnline: device.isOnline,
+      version: device.version
+    }));
   }
 
   async syncWithDevice(deviceId: string, progressCallback?: (progress: SyncProgress) => void): Promise<boolean> {
