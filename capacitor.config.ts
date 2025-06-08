@@ -2,7 +2,7 @@
 import { CapacitorConfig } from '@capacitor/core';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.a8ba5324253f4fe881f605074c4abc05',
+  appId: 'com.app.vaultix.secure',
   appName: 'Vaultix Secure Vault',
   webDir: 'dist',
   plugins: {
