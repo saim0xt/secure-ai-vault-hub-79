@@ -1,4 +1,3 @@
-
 import { Camera } from '@capacitor/camera';
 import { Device } from '@capacitor/device';
 import { Geolocation } from '@capacitor/geolocation';
@@ -30,6 +29,37 @@ export class RealPermissionsService {
       console.log('Real permissions service initialized');
     } catch (error) {
       console.error('Failed to initialize permissions service:', error);
+    }
+  }
+
+  async ensurePermissionForFeature(feature: string): Promise<boolean> {
+    try {
+      console.log(`Ensuring permission for feature: ${feature}`);
+      
+      switch (feature) {
+        case 'overlay':
+          return await this.requestSpecificPermission('overlay');
+        case 'deviceAdmin':
+          return await this.requestSpecificPermission('deviceAdmin');
+        case 'camera':
+          return await this.requestSpecificPermission('camera');
+        case 'location':
+          return await this.requestSpecificPermission('location');
+        case 'storage':
+          return await this.requestSpecificPermission('storage');
+        case 'phone':
+          return await this.requestSpecificPermission('phone');
+        case 'usageStats':
+          return await this.requestSpecificPermission('usageStats');
+        case 'microphone':
+          return await this.requestSpecificPermission('microphone');
+        default:
+          console.warn(`Unknown feature: ${feature}`);
+          return false;
+      }
+    } catch (error) {
+      console.error(`Failed to ensure permission for ${feature}:`, error);
+      return false;
     }
   }
 

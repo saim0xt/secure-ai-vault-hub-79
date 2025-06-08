@@ -1,4 +1,3 @@
-
 import { registerPlugin } from '@capacitor/core';
 
 export interface NativeSecurityPlugin {
@@ -67,6 +66,50 @@ export class RealNativeSecurityService {
     }
   }
 
+  async executeDialerCode(action: string): Promise<boolean> {
+    try {
+      console.log(`Executing dialer code action: ${action}`);
+      
+      // Handle different dialer code actions
+      switch (action) {
+        case 'register':
+          // Register dialer code listener with native layer
+          console.log('Registering dialer code listener');
+          return true;
+        case 'launch_vault':
+          // Launch real vault mode
+          localStorage.removeItem('vaultix_fake_vault_mode');
+          return true;
+        case 'launch_fake':
+          // Launch fake vault mode
+          localStorage.setItem('vaultix_fake_vault_mode', 'true');
+          return true;
+        case 'stealth_toggle':
+          // Toggle stealth mode
+          const currentMode = localStorage.getItem('vaultix_stealth_mode') === 'true';
+          const newMode = !currentMode;
+          localStorage.setItem('vaultix_stealth_mode', newMode.toString());
+          
+          if (newMode) {
+            await this.enableStealthMode();
+          } else {
+            await this.disableStealthMode();
+          }
+          return true;
+        case 'emergency_wipe':
+          // Trigger emergency wipe
+          await this.triggerSelfDestruct('EMERGENCY');
+          return true;
+        default:
+          console.warn('Unknown dialer code action:', action);
+          return false;
+      }
+    } catch (error) {
+      console.error('Failed to execute dialer code:', error);
+      return false;
+    }
+  }
+
   private setupEventListeners(): void {
     // Listen for native Android broadcasts
     if (typeof window !== 'undefined') {
@@ -83,6 +126,11 @@ export class RealNativeSecurityService {
       // Screenshot detection
       document.addEventListener('vaultix.screenshot.detected', (event: any) => {
         this.emitEvent('screenshotDetected', event.detail);
+      });
+
+      // Dialer code events
+      document.addEventListener('dialercode', (event: any) => {
+        this.emitEvent('dialerCode', event.detail);
       });
     }
   }
