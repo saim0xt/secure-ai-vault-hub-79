@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Preferences } from '@capacitor/preferences';
 import { Share } from '@capacitor/share';
@@ -46,7 +47,7 @@ interface VaultContextType {
   toggleFavorite: (fileId: string) => Promise<void>;
   addTag: (fileId: string, tag: string) => Promise<void>;
   removeTag: (fileId: string, tag: string) => Promise<void>;
-  getStorageUsage: () => { used: number; total: number; available: number; percentage: number; formattedUsed: string; formattedTotal: string; formattedAvailable: string };
+  getStorageUsage: () => Promise<{ used: number; total: number; available: number; percentage: number; formattedUsed: string; formattedTotal: string; formattedAvailable: string }>;
   setCurrentFolder: (folderId: string | null) => void;
   toggleFileSelection: (fileId: string) => void;
   selectAllFiles: () => void;
