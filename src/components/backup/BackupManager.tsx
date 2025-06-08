@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
@@ -8,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Download, Upload, Cloud, HardDrive, Shield, Calendar, Wifi, Smartphone } from 'lucide-react';
 import { EnhancedBackupService, BackupMetadata, RestoreProgress } from '@/services/EnhancedBackupService';
 import { GoogleDriveService } from '@/services/GoogleDriveService';
-import { LANSyncService } from '@/services/LANSyncService';
+import { LANSyncService, DiscoveredDevice } from '@/services/LANSyncService';
 
 const BackupManager = () => {
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ const BackupManager = () => {
   const [backupHistory, setBackupHistory] = useState<BackupMetadata[]>([]);
   const [restoreProgress, setRestoreProgress] = useState<RestoreProgress | null>(null);
   const [isGoogleDriveConnected, setIsGoogleDriveConnected] = useState(false);
-  const [lanDevices, setLanDevices] = useState<any[]>([]);
+  const [lanDevices, setLanDevices] = useState<DiscoveredDevice[]>([]);
 
   const backupService = EnhancedBackupService.getInstance();
   const googleDriveService = GoogleDriveService.getInstance();

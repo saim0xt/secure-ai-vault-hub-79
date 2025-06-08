@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -62,10 +61,10 @@ const AuthScreen = () => {
     try {
       const capabilities = await biometricService.checkCapabilities();
       setBiometricAvailable(capabilities.isAvailable);
-      setBiometricTypes(capabilities.biometryTypes);
+      setBiometricTypes(capabilities.biometryTypes.map(type => type.toString()));
       
       if (!capabilities.isAvailable) {
-        console.log('Biometric not available:', capabilities.reason);
+        console.log('Biometric not available');
       }
     } catch (error) {
       console.error('Failed to check biometric capabilities:', error);

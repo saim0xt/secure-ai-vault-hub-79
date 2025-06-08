@@ -102,6 +102,22 @@ export class PushNotificationService {
     }
   }
 
+  async sendSecurityAlert(title: string, message: string): Promise<void> {
+    try {
+      const notification: LocalNotificationSchema = {
+        title,
+        body: message,
+        id: Date.now(),
+        extra: { type: 'security_alert' }
+      };
+
+      await LocalNotifications.schedule({ notifications: [notification] });
+      console.log('Security alert sent:', title);
+    } catch (error) {
+      console.error('Failed to send security alert:', error);
+    }
+  }
+
   async clearAllNotifications(): Promise<void> {
     try {
       await LocalNotifications.cancel({ notifications: [] });

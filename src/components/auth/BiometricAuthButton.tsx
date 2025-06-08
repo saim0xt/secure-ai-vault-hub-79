@@ -25,7 +25,7 @@ const BiometricAuthButton: React.FC<BiometricAuthButtonProps> = ({ onSuccess, di
     try {
       const capabilities = await BiometricService.getInstance().checkCapabilities();
       setIsAvailable(capabilities.isAvailable);
-      setBiometricType(capabilities.biometryTypes[0] || '');
+      setBiometricType(capabilities.biometryTypes[0]?.toString() || '');
     } catch (error) {
       console.error('Failed to check biometric capabilities:', error);
       setIsAvailable(false);
