@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -9,13 +10,27 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { Fingerprint, Eye, EyeOff, Shield, Lock, Grid3X3, AlertTriangle } from 'lucide-react';
+import { Fingerprint, Eye, EyeOff, Shield, Lock, Grid3X3, AlertTriangle, Settings } from 'lucide-react';
 import PatternLock from './PatternLock';
 
 const AuthScreen = () => {
   const navigate = useNavigate();
-  const { hasPin, login, setupPin, attempts, fakeVaultMode, isAuthenticated, biometricEnabled } = useAuth();
-  const { maxFailedAttempts, stealthMode } = useSecurity();
+  const { 
+    hasPin, 
+    hasPattern, 
+    login, 
+    setupPin, 
+    setupPattern, 
+    attempts, 
+    maxAttempts,
+    fakeVaultMode, 
+    isAuthenticated, 
+    biometricEnabled,
+    authMethod,
+    setAuthMethod,
+    isLocked 
+  } = useAuth();
+  const { stealthMode } = useSecurity();
   const { toast } = useToast();
   
   const [pin, setPin] = useState('');
@@ -23,25 +38,25 @@ const AuthScreen = () => {
   const [showPin, setShowPin] = useState(false);
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [authMethod, setAuthMethod] = useState<'pin' | 'pattern'>('pin');
+  const [currentAuthMethod, setCurrentAuthMethod] = useState<'pin' | 'pattern'>('pin');
   const [showPatternLock, setShowPatternLock] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricTypes, setBiometricTypes] = useState<string[]>([]);
+  const [showMethodSelector, setShowMethodSelector] = useState(false);
 
   const biometricService = BiometricService.getInstance();
   const volumeKeyService = VolumeKeyService.getInstance();
 
-  // Check biometric availability
+  // Determine if user needs to set up any authentication
+  const needsSetup = !hasPin && !hasPattern;
+  const canUsePin = hasPin || (isSettingUp && currentAuthMethod === 'pin');
+  const canUsePattern = hasPattern || (isSettingUp && currentAuthMethod === 'pattern');
+
   useEffect(() => {
     checkBiometricCapabilities();
-  }, []);
-
-  // Setup volume key patterns
-  useEffect(() => {
     setupVolumeKeyPatterns();
   }, []);
 
-  // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
       console.log('User already authenticated, redirecting to dashboard');
@@ -50,29 +65,30 @@ const AuthScreen = () => {
   }, [isAuthenticated, navigate]);
 
   useEffect(() => {
-    // Auto-focus PIN input
-    if (authMethod === 'pin') {
-      const input = document.getElementById('pin-input');
-      if (input) input.focus();
+    // Set default auth method based on what's available
+    if (needsSetup) {
+      setIsSettingUp(true);
+      setCurrentAuthMethod('pin'); // Default to PIN for setup
+    } else if (hasPin && !hasPattern) {
+      setCurrentAuthMethod('pin');
+    } else if (hasPattern && !hasPin) {
+      setCurrentAuthMethod('pattern');
+    } else if (hasPin && hasPattern) {
+      setCurrentAuthMethod(authMethod); // Use saved preference
     }
-  }, [authMethod]);
+  }, [hasPin, hasPattern, needsSetup, authMethod]);
 
   const checkBiometricCapabilities = async () => {
     try {
       const capabilities = await biometricService.checkCapabilities();
       setBiometricAvailable(capabilities.isAvailable);
       setBiometricTypes(capabilities.biometryTypes.map(type => type.toString()));
-      
-      if (!capabilities.isAvailable) {
-        console.log('Biometric not available');
-      }
     } catch (error) {
       console.error('Failed to check biometric capabilities:', error);
     }
   };
 
   const setupVolumeKeyPatterns = () => {
-    // Register volume key callbacks for authentication
     volumeKeyService.registerCallback('unlock', handleVolumeUnlock);
     volumeKeyService.registerCallback('emergency_lock', handleEmergencyLock);
     volumeKeyService.registerCallback('fake_vault', handleFakeVaultToggle);
@@ -85,13 +101,11 @@ const AuthScreen = () => {
   };
 
   const handleEmergencyLock = () => {
-    // Clear sensitive data and redirect
     localStorage.removeItem('vaultix_session');
     window.location.href = '/auth';
   };
 
   const handleFakeVaultToggle = () => {
-    // Toggle fake vault mode
     const event = new CustomEvent('toggle_fake_vault');
     window.dispatchEvent(event);
   };
@@ -113,21 +127,14 @@ const AuthScreen = () => {
       );
 
       if (result.success) {
-        // Biometric success - auto-login with stored credentials
-        const { value: storedHash } = await import('@capacitor/preferences').then(p => 
-          p.Preferences.get({ key: 'vaultix_pin_hash' })
-        );
-        
-        if (storedHash) {
-          // Simulate successful login without requiring PIN again
-          const success = await login('biometric_bypass_token');
-          if (success) {
-            toast({
-              title: "Welcome",
-              description: "Biometric authentication successful!",
-            });
-            setTimeout(() => navigate('/', { replace: true }), 500);
-          }
+        // Use existing credentials for biometric bypass
+        const success = await login('biometric_bypass_token', currentAuthMethod);
+        if (success) {
+          toast({
+            title: "Welcome",
+            description: "Biometric authentication successful!",
+          });
+          setTimeout(() => navigate('/', { replace: true }), 500);
         }
       } else {
         toast({
@@ -151,7 +158,7 @@ const AuthScreen = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (authMethod === 'pattern') {
+    if (currentAuthMethod === 'pattern') {
       setShowPatternLock(true);
       return;
     }
@@ -165,10 +172,19 @@ const AuthScreen = () => {
       return;
     }
 
+    if (isLocked) {
+      toast({
+        title: "Account Locked",
+        description: `Too many failed attempts. Please wait or reset your vault.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
-      if (!hasPin || isSettingUp) {
+      if (needsSetup || isSettingUp) {
         if (pin !== confirmPin) {
           toast({
             title: "Error",
@@ -188,34 +204,7 @@ const AuthScreen = () => {
         }
 
         await setupPin(pin);
-        
-        // Setup biometric after PIN setup if available
-        if (biometricAvailable && !biometricEnabled) {
-          const setupBiometric = await new Promise<boolean>((resolve) => {
-            toast({
-              title: "Setup Biometric",
-              description: "Would you like to enable biometric authentication?",
-              action: (
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={() => resolve(true)}>Yes</Button>
-                  <Button size="sm" variant="outline" onClick={() => resolve(false)}>No</Button>
-                </div>
-              ),
-            });
-          });
-
-          if (setupBiometric) {
-            try {
-              await biometricService.setBiometricEnabled(true);
-              toast({
-                title: "Success",
-                description: "Biometric authentication enabled!",
-              });
-            } catch (error) {
-              console.error('Failed to enable biometric:', error);
-            }
-          }
-        }
+        await setAuthMethod('pin');
         
         toast({
           title: "Success",
@@ -224,7 +213,7 @@ const AuthScreen = () => {
         
         setTimeout(() => navigate('/', { replace: true }), 500);
       } else {
-        const success = await login(pin);
+        const success = await login(pin, 'pin');
         if (success) {
           console.log('Login successful, navigating to dashboard');
           toast({
@@ -234,9 +223,10 @@ const AuthScreen = () => {
           
           setTimeout(() => navigate('/', { replace: true }), 500);
         } else {
+          const remaining = Math.max(0, maxAttempts - attempts - 1);
           toast({
             title: "Access Denied",
-            description: `Incorrect PIN. ${maxFailedAttempts - attempts} attempts remaining.`,
+            description: `Incorrect PIN. ${remaining} attempts remaining.`,
             variant: "destructive",
           });
         }
@@ -259,8 +249,9 @@ const AuthScreen = () => {
     try {
       const patternString = pattern.join('');
       
-      if (!hasPin || isSettingUp) {
-        await setupPin(patternString);
+      if (needsSetup || isSettingUp) {
+        await setupPattern(patternString);
+        await setAuthMethod('pattern');
         toast({
           title: "Success",
           description: "Pattern setup complete. Welcome to Vaultix!",
@@ -268,7 +259,7 @@ const AuthScreen = () => {
         
         setTimeout(() => navigate('/', { replace: true }), 500);
       } else {
-        const success = await login(patternString);
+        const success = await login(patternString, 'pattern');
         if (success) {
           toast({
             title: "Welcome",
@@ -277,9 +268,10 @@ const AuthScreen = () => {
           
           setTimeout(() => navigate('/', { replace: true }), 500);
         } else {
+          const remaining = Math.max(0, maxAttempts - attempts - 1);
           toast({
             title: "Access Denied",
-            description: `Incorrect pattern. ${maxFailedAttempts - attempts} attempts remaining.`,
+            description: `Incorrect pattern. ${remaining} attempts remaining.`,
             variant: "destructive",
           });
           setShowPatternLock(false);
@@ -296,8 +288,16 @@ const AuthScreen = () => {
     }
   };
 
-  const switchToSetup = () => {
+  const handleMethodChange = (method: 'pin' | 'pattern') => {
+    setCurrentAuthMethod(method);
+    setPin('');
+    setConfirmPin('');
+    setShowMethodSelector(false);
+  };
+
+  const switchToSetup = (method: 'pin' | 'pattern') => {
     setIsSettingUp(true);
+    setCurrentAuthMethod(method);
     setPin('');
     setConfirmPin('');
   };
@@ -307,11 +307,34 @@ const AuthScreen = () => {
       <PatternLock
         onPatternComplete={handlePatternComplete}
         onCancel={() => setShowPatternLock(false)}
-        isSetup={!hasPin || isSettingUp}
-        title={!hasPin || isSettingUp ? "Create Pattern" : "Enter Pattern"}
+        isSetup={needsSetup || isSettingUp}
+        title={needsSetup || isSettingUp ? "Create Pattern" : "Enter Pattern"}
       />
     );
   }
+
+  const getAuthTitle = () => {
+    if (needsSetup) return "Setup your secure vault";
+    if (isSettingUp) return `Setup ${currentAuthMethod === 'pin' ? 'PIN' : 'Pattern'}`;
+    return "Enter your credentials to access vault";
+  };
+
+  const getAuthMethods = () => {
+    const methods = [];
+    if (hasPin || (isSettingUp && currentAuthMethod === 'pin')) {
+      methods.push({ key: 'pin', label: 'PIN', icon: Lock });
+    }
+    if (hasPattern || (isSettingUp && currentAuthMethod === 'pattern')) {
+      methods.push({ key: 'pattern', label: 'Pattern', icon: Grid3X3 });
+    }
+    if (needsSetup) {
+      return [
+        { key: 'pin', label: 'PIN', icon: Lock },
+        { key: 'pattern', label: 'Pattern', icon: Grid3X3 }
+      ];
+    }
+    return methods;
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 flex items-center justify-center p-4">
@@ -336,12 +359,7 @@ const AuthScreen = () => {
               <h1 className="text-3xl font-bold text-white mb-2">
                 {stealthMode ? "Calculator" : "Vaultix"}
               </h1>
-              <p className="text-gray-400">
-                {!hasPin || isSettingUp
-                  ? "Setup your secure vault"
-                  : "Enter your credentials to access vault"
-                }
-              </p>
+              <p className="text-gray-400">{getAuthTitle()}</p>
               {fakeVaultMode && (
                 <div className="mt-2 text-yellow-400 text-sm">
                   🔒 Fake Vault Mode Active
@@ -349,34 +367,56 @@ const AuthScreen = () => {
               )}
             </div>
 
-            {/* Authentication Method Tabs */}
-            <div className="flex mb-6 bg-gray-700/50 rounded-lg p-1">
-              <button
-                onClick={() => setAuthMethod('pin')}
-                className={`flex-1 flex items-center justify-center space-x-2 py-2 px-4 rounded-md transition-colors ${
-                  authMethod === 'pin' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                <Lock className="w-4 h-4" />
-                <span>PIN</span>
-              </button>
-              <button
-                onClick={() => setAuthMethod('pattern')}
-                className={`flex-1 flex items-center justify-center space-x-2 py-2 px-4 rounded-md transition-colors ${
-                  authMethod === 'pattern' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                <Grid3X3 className="w-4 h-4" />
-                <span>Pattern</span>
-              </button>
-            </div>
+            {/* Authentication Method Selection */}
+            {getAuthMethods().length > 1 && (
+              <div className="flex mb-6 bg-gray-700/50 rounded-lg p-1">
+                {getAuthMethods().map((method) => {
+                  const IconComponent = method.icon;
+                  return (
+                    <button
+                      key={method.key}
+                      onClick={() => handleMethodChange(method.key as 'pin' | 'pattern')}
+                      className={`flex-1 flex items-center justify-center space-x-2 py-2 px-4 rounded-md transition-colors ${
+                        currentAuthMethod === method.key 
+                          ? 'bg-blue-600 text-white' 
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      <IconComponent className="w-4 h-4" />
+                      <span>{method.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Setup Options for New Users */}
+            {needsSetup && !isSettingUp && (
+              <div className="space-y-4 mb-6">
+                <h3 className="text-lg font-medium text-white text-center">Choose Security Method</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <Button
+                    onClick={() => switchToSetup('pin')}
+                    variant="outline"
+                    className="p-6 h-auto flex-col border-gray-600 hover:bg-gray-700"
+                  >
+                    <Lock className="w-8 h-8 mb-2" />
+                    <span>Setup PIN</span>
+                  </Button>
+                  <Button
+                    onClick={() => switchToSetup('pattern')}
+                    variant="outline"
+                    className="p-6 h-auto flex-col border-gray-600 hover:bg-gray-700"
+                  >
+                    <Grid3X3 className="w-8 h-8 mb-2" />
+                    <span>Setup Pattern</span>
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* PIN Form */}
-            {authMethod === 'pin' && (
+            {(currentAuthMethod === 'pin' && canUsePin && (isSettingUp || !needsSetup)) && (
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="space-y-4">
                   <div className="relative">
@@ -385,10 +425,11 @@ const AuthScreen = () => {
                       type={showPin ? "text" : "password"}
                       value={pin}
                       onChange={(e) => setPin(e.target.value)}
-                      placeholder={!hasPin || isSettingUp ? "Create PIN (4+ digits)" : "Enter PIN"}
+                      placeholder={needsSetup || isSettingUp ? "Create PIN (4+ digits)" : "Enter PIN"}
                       className="bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 pr-10"
                       maxLength={10}
                       autoComplete="off"
+                      disabled={isLocked}
                     />
                     <button
                       type="button"
@@ -399,7 +440,7 @@ const AuthScreen = () => {
                     </button>
                   </div>
 
-                  {(!hasPin || isSettingUp) && (
+                  {(needsSetup || isSettingUp) && (
                     <div className="relative">
                       <Input
                         type={showPin ? "text" : "password"}
@@ -409,6 +450,7 @@ const AuthScreen = () => {
                         className="bg-gray-700/50 border-gray-600 text-white placeholder-gray-400"
                         maxLength={10}
                         autoComplete="off"
+                        disabled={isLocked}
                       />
                     </div>
                   )}
@@ -416,7 +458,7 @@ const AuthScreen = () => {
 
                 <Button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || isLocked}
                   className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3"
                 >
                   {loading ? (
@@ -427,7 +469,7 @@ const AuthScreen = () => {
                   ) : (
                     <>
                       <Lock className="w-4 h-4 mr-2" />
-                      {!hasPin || isSettingUp ? "Setup Vault" : "Unlock Vault"}
+                      {needsSetup || isSettingUp ? "Setup PIN" : "Unlock Vault"}
                     </>
                   )}
                 </Button>
@@ -435,14 +477,15 @@ const AuthScreen = () => {
             )}
 
             {/* Pattern Form */}
-            {authMethod === 'pattern' && (
+            {(currentAuthMethod === 'pattern' && canUsePattern && (isSettingUp || !needsSetup)) && (
               <div className="space-y-6">
                 <Button
                   onClick={() => setShowPatternLock(true)}
+                  disabled={isLocked}
                   className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3"
                 >
                   <Grid3X3 className="w-4 h-4 mr-2" />
-                  {!hasPin || isSettingUp ? "Create Pattern" : "Draw Pattern"}
+                  {needsSetup || isSettingUp ? "Create Pattern" : "Draw Pattern"}
                 </Button>
               </div>
             )}
@@ -457,23 +500,46 @@ const AuthScreen = () => {
                 <p className="text-red-400 text-sm flex items-center">
                   <AlertTriangle className="w-4 h-4 mr-2" />
                   {attempts} failed attempt{attempts > 1 ? 's' : ''}. 
-                  {maxFailedAttempts - attempts} remaining.
+                  {Math.max(0, maxAttempts - attempts)} remaining.
                 </p>
+                {isLocked && (
+                  <p className="text-red-300 text-xs mt-1">
+                    Account locked. Contact support to unlock.
+                  </p>
+                )}
               </motion.div>
             )}
 
-            {/* Biometric Option */}
-            {hasPin && !isSettingUp && biometricAvailable && biometricEnabled && (
-              <div className="mt-6">
-                <Button
-                  variant="outline"
-                  className="w-full border-gray-600 text-gray-300 hover:bg-gray-700"
-                  onClick={handleBiometricAuth}
-                  disabled={loading}
-                >
-                  <Fingerprint className="w-4 h-4 mr-2" />
-                  Use {biometricTypes.join(' / ')}
-                </Button>
+            {/* Additional Options */}
+            {!needsSetup && !isSettingUp && (hasPin || hasPattern) && (
+              <div className="mt-6 space-y-3">
+                {/* Biometric Option */}
+                {biometricAvailable && biometricEnabled && !isLocked && (
+                  <Button
+                    variant="outline"
+                    className="w-full border-gray-600 text-gray-300 hover:bg-gray-700"
+                    onClick={handleBiometricAuth}
+                    disabled={loading}
+                  >
+                    <Fingerprint className="w-4 h-4 mr-2" />
+                    Use {biometricTypes.join(' / ')}
+                  </Button>
+                )}
+
+                {/* Setup Additional Method */}
+                {((hasPin && !hasPattern) || (hasPattern && !hasPin)) && (
+                  <Button
+                    variant="ghost"
+                    className="w-full text-gray-400 hover:text-white text-sm"
+                    onClick={() => {
+                      const newMethod = hasPin ? 'pattern' : 'pin';
+                      switchToSetup(newMethod);
+                    }}
+                  >
+                    <Settings className="w-4 h-4 mr-2" />
+                    Setup {hasPin ? 'Pattern' : 'PIN'} Authentication
+                  </Button>
+                )}
               </div>
             )}
 
