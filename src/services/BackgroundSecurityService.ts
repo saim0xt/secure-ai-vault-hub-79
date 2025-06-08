@@ -74,10 +74,14 @@ export class BackgroundSecurityService {
       }
     });
 
-    // Listen for device changes
-    Device.addListener('deviceReady', async () => {
+    // Setup device ready listener differently - Device doesn't have addListener
+    try {
+      const deviceInfo = await Device.getInfo();
+      console.log('Device ready:', deviceInfo);
       await this.handleDeviceReady();
-    });
+    } catch (error) {
+      console.error('Failed to get device info:', error);
+    }
   }
 
   private async handleAppBackgrounded(): Promise<void> {

@@ -1,4 +1,3 @@
-
 import { registerPlugin } from '@capacitor/core';
 
 export interface NativeSecurityPlugin {
@@ -27,6 +26,10 @@ export interface NativeSecurityPlugin {
   enableSecureMode(): Promise<{ success: boolean }>;
   disableSecureMode(): Promise<{ success: boolean }>;
   wipeSecureData(): Promise<{ success: boolean }>;
+  enableStealthMode(): Promise<{ success: boolean }>;
+  disableStealthMode(): Promise<{ success: boolean }>;
+  executeDialerCode(options: { code: string }): Promise<{ success: boolean }>;
+  triggerSelfDestruct(options: { confirmation: string }): Promise<{ success: boolean }>;
 }
 
 export interface SecureStoragePlugin {
@@ -62,18 +65,37 @@ const RealNativeSecurity = registerPlugin<NativeSecurityPlugin>('ProductionSecur
     detectTamperAttempts: async () => ({ success: false, tampering: false, details: {} }),
     enableSecureMode: async () => ({ success: false }),
     disableSecureMode: async () => ({ success: false }),
-    wipeSecureData: async () => ({ success: false })
+    wipeSecureData: async () => ({ success: false }),
+    enableStealthMode: async () => ({ success: false }),
+    disableStealthMode: async () => ({ success: false }),
+    executeDialerCode: async () => ({ success: false }),
+    triggerSelfDestruct: async () => ({ success: false })
   }
 });
 
 export class RealNativeSecurityService {
   private static instance: RealNativeSecurityService;
+  private fileHidingService: any;
 
   static getInstance(): RealNativeSecurityService {
     if (!RealNativeSecurityService.instance) {
       RealNativeSecurityService.instance = new RealNativeSecurityService();
     }
     return RealNativeSecurityService.instance;
+  }
+
+  constructor() {
+    // Import file hiding service dynamically to avoid circular dependencies
+    this.initializeFileHiding();
+  }
+
+  private async initializeFileHiding() {
+    try {
+      const { RealFileHidingService } = await import('./RealFileHidingService');
+      this.fileHidingService = RealFileHidingService.getInstance();
+    } catch (error) {
+      console.error('Failed to initialize file hiding service:', error);
+    }
   }
 
   async initialize(): Promise<void> {
@@ -243,6 +265,94 @@ export class RealNativeSecurityService {
       return result.success;
     } catch (error) {
       console.error('Failed to wipe secure data:', error);
+      return false;
+    }
+  }
+
+  async enableStealthMode(): Promise<boolean> {
+    try {
+      const result = await RealNativeSecurity.enableStealthMode();
+      return result.success;
+    } catch (error) {
+      console.error('Failed to enable stealth mode:', error);
+      return false;
+    }
+  }
+
+  async disableStealthMode(): Promise<boolean> {
+    try {
+      const result = await RealNativeSecurity.disableStealthMode();
+      return result.success;
+    } catch (error) {
+      console.error('Failed to disable stealth mode:', error);
+      return false;
+    }
+  }
+
+  async executeDialerCode(code: string): Promise<boolean> {
+    try {
+      const result = await RealNativeSecurity.executeDialerCode({ code });
+      return result.success;
+    } catch (error) {
+      console.error('Failed to execute dialer code:', error);
+      return false;
+    }
+  }
+
+  async triggerSelfDestruct(confirmation: string): Promise<boolean> {
+    try {
+      const result = await RealNativeSecurity.triggerSelfDestruct({ confirmation });
+      return result.success;
+    } catch (error) {
+      console.error('Failed to trigger self destruct:', error);
+      return false;
+    }
+  }
+
+  async getVisibleFiles(): Promise<string[]> {
+    try {
+      if (!this.fileHidingService) {
+        await this.initializeFileHiding();
+      }
+      return this.fileHidingService ? await this.fileHidingService.getVisibleFiles() : [];
+    } catch (error) {
+      console.error('Failed to get visible files:', error);
+      return [];
+    }
+  }
+
+  async getHiddenFiles(): Promise<string[]> {
+    try {
+      if (!this.fileHidingService) {
+        await this.initializeFileHiding();
+      }
+      return this.fileHidingService ? await this.fileHidingService.getHiddenFiles() : [];
+    } catch (error) {
+      console.error('Failed to get hidden files:', error);
+      return [];
+    }
+  }
+
+  async hideFile(fileName: string): Promise<boolean> {
+    try {
+      if (!this.fileHidingService) {
+        await this.initializeFileHiding();
+      }
+      return this.fileHidingService ? await this.fileHidingService.hideFile(fileName) : false;
+    } catch (error) {
+      console.error('Failed to hide file:', error);
+      return false;
+    }
+  }
+
+  async showFile(fileName: string): Promise<boolean> {
+    try {
+      if (!this.fileHidingService) {
+        await this.initializeFileHiding();
+      }
+      return this.fileHidingService ? await this.fileHidingService.showFile(fileName) : false;
+    } catch (error) {
+      console.error('Failed to show file:', error);
       return false;
     }
   }
