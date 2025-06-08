@@ -1,4 +1,3 @@
-
 import { AdMob, BannerAdOptions, BannerAdSize, BannerAdPosition, RewardAdOptions, AdMobRewardItem } from '@capacitor-community/admob';
 import { Preferences } from '@capacitor/preferences';
 
@@ -7,6 +6,7 @@ export interface AdMobConfig {
   bannerAdUnitId: string;
   interstitialAdUnitId: string;
   rewardedAdUnitId: string;
+  testDeviceIds: string[];
   enabled: boolean;
 }
 
@@ -24,6 +24,7 @@ export class AdMobService {
     bannerAdUnitId: 'ca-app-pub-3940256099942544/6300978111',
     interstitialAdUnitId: 'ca-app-pub-3940256099942544/1033173712',
     rewardedAdUnitId: 'ca-app-pub-3940256099942544/5224354917',
+    testDeviceIds: [],
     enabled: true
   };
   private isInitialized = false;
@@ -47,8 +48,8 @@ export class AdMobService {
       }
 
       await AdMob.initialize({
-        testingDevices: [],
-        initializeForTesting: false
+        testingDevices: this.config.testDeviceIds,
+        initializeForTesting: this.config.testDeviceIds.length > 0
       });
 
       await this.preloadInterstitial();
@@ -94,7 +95,7 @@ export class AdMobService {
         adSize: BannerAdSize.BANNER,
         position,
         margin: 0,
-        isTesting: false
+        isTesting: this.config.testDeviceIds.length > 0
       };
 
       await AdMob.showBanner(options);
@@ -165,7 +166,7 @@ export class AdMobService {
     try {
       const options = {
         adId: this.config.interstitialAdUnitId,
-        isTesting: false
+        isTesting: this.config.testDeviceIds.length > 0
       };
 
       await AdMob.prepareInterstitial(options);
@@ -182,7 +183,7 @@ export class AdMobService {
     try {
       const options: RewardAdOptions = {
         adId: this.config.rewardedAdUnitId,
-        isTesting: false
+        isTesting: this.config.testDeviceIds.length > 0
       };
 
       await AdMob.prepareRewardVideoAd(options);

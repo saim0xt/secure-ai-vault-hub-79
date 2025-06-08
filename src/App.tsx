@@ -1,3 +1,4 @@
+
 import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -26,7 +27,6 @@ import SecureCamera from "./components/camera/SecureCamera";
 import VoiceRecorder from "./components/voice/VoiceRecorder";
 import RecycleBin from "./components/vault/RecycleBin";
 import RewardsCenter from "./components/rewards/RewardsCenter";
-import TestingSuite from "./components/testing/TestingSuite";
 import LANSyncManager from "./components/network/LANSyncManager";
 import APIConfiguration from "./components/settings/APIConfiguration";
 
@@ -70,7 +70,6 @@ const AppContent = () => {
         const { EnhancedAIService } = await import('./services/EnhancedAIService');
         const { CrossDeviceSyncService } = await import('./services/CrossDeviceSyncService');
         const { AdvancedAnalyticsService } = await import('./services/AdvancedAnalyticsService');
-        const { TestingSuiteService } = await import('./services/TestingSuiteService');
         const { PermissionsService } = await import('./services/PermissionsService');
         const { BiometricService } = await import('./services/BiometricService');
         const { LANSyncService } = await import('./services/LANSyncService');
@@ -92,7 +91,6 @@ const AppContent = () => {
           EnhancedAIService.getInstance().initialize(),
           CrossDeviceSyncService.getInstance().initialize(),
           AdvancedAnalyticsService.getInstance().initialize(),
-          TestingSuiteService.getInstance().initialize(),
           LANSyncService.getInstance().initialize()
         ]);
         
@@ -217,11 +215,6 @@ const AppContent = () => {
         <Route path="/rewards" element={
           <ProtectedRoute>
             <RewardsCenter />
-          </ProtectedRoute>
-        } />
-        <Route path="/testing" element={
-          <ProtectedRoute>
-            <TestingSuite />
           </ProtectedRoute>
         } />
         <Route path="/backup" element={
