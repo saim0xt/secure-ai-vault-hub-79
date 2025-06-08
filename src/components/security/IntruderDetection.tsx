@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Geolocation } from '@capacitor/geolocation';
@@ -6,7 +7,7 @@ import { Preferences } from '@capacitor/preferences';
 
 interface BreakInLog {
   timestamp: string;
-  type: 'failed_pin' | 'failed_biometric' | 'multiple_attempts';
+  type: 'failed_pin' | 'failed_pattern' | 'failed_biometric' | 'multiple_attempts';
   deviceInfo: string;
   location?: string;
   photoPath?: string;
@@ -65,7 +66,7 @@ export class IntruderDetection {
     }
   }
 
-  static async logBreakInAttempt(type: 'failed_pin' | 'failed_biometric' | 'multiple_attempts'): Promise<void> {
+  static async logBreakInAttempt(type: 'failed_pin' | 'failed_pattern' | 'failed_biometric' | 'multiple_attempts'): Promise<void> {
     try {
       const [photoPath, location, deviceInfo, ipAddress] = await Promise.all([
         this.captureIntruderPhoto(),
