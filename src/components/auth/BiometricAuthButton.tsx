@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Fingerprint, Eye, Shield, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { BiometricService } from '../../services/BiometricService';
+import { ProductionBiometricService } from '../../services/ProductionBiometricService';
 
 interface BiometricAuthButtonProps {
   onSuccess: () => void;
@@ -16,6 +16,9 @@ const BiometricAuthButton: React.FC<BiometricAuthButtonProps> = ({ onSuccess, di
   const [isAvailable, setIsAvailable] = useState(false);
   const [biometricType, setBiometricType] = useState<string>('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [strongBiometryAvailable, setStrongBiometryAvailable] = useState(false);
+
+  const biometricService = ProductionBiometricService.getInstance();
 
   useEffect(() => {
     checkBiometricAvailability();
@@ -23,8 +26,10 @@ const BiometricAuthButton: React.FC<BiometricAuthButtonProps> = ({ onSuccess, di
 
   const checkBiometricAvailability = async () => {
     try {
-      const capabilities = await BiometricService.getInstance().checkCapabilities();
+      await biometricService.initialize();
+      const capabilities = await biometricService.checkCapabilities();
       setIsAvailable(capabilities.isAvailable);
+      setStrongBiometryAvailable(capabilities.strongBiometryIsAvailable);
       setBiometricType(capabilities.biometryTypes[0]?.toString() || '');
     } catch (error) {
       console.error('Failed to check biometric capabilities:', error);
@@ -37,8 +42,9 @@ const BiometricAuthButton: React.FC<BiometricAuthButtonProps> = ({ onSuccess, di
 
     setIsAuthenticating(true);
     try {
-      const result = await BiometricService.getInstance().authenticate(
-        'Authenticate to access your vault'
+      const result = await biometricService.authenticate(
+        'Authenticate to access your secure vault',
+        strongBiometryAvailable
       );
 
       if (result.success) {
@@ -115,6 +121,9 @@ const BiometricAuthButton: React.FC<BiometricAuthButtonProps> = ({ onSuccess, di
       <div className="relative flex items-center justify-center gap-3">
         {getBiometricIcon()}
         <span>{isAuthenticating ? 'Authenticating...' : getBiometricLabel()}</span>
+        {strongBiometryAvailable && (
+          <Badge variant="secondary" className="ml-2 text-xs">Secure</Badge>
+        )}
       </div>
     </Button>
   );
