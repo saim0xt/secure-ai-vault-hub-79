@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Preferences } from '@capacitor/preferences';
 import CryptoJS from 'crypto-js';
@@ -7,7 +8,6 @@ interface AuthContextType {
   isAuthenticated: boolean;
   hasPin: boolean;
   login: (credentials: string) => Promise<boolean>;
-  register: (credentials: string) => Promise<void>;
   logout: () => void;
   setupPin: (credentials: string) => Promise<void>;
   changePin: (oldCredentials: string, newCredentials: string) => Promise<boolean>;
@@ -118,10 +118,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error setting up authentication:', error);
       throw error;
     }
-  };
-
-  const register = async (credentials: string): Promise<void> => {
-    await setupPin(credentials);
   };
 
   const login = async (credentials: string): Promise<boolean> => {
@@ -238,7 +234,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAuthenticated,
       hasPin,
       login,
-      register,
       logout,
       setupPin,
       changePin,

@@ -332,7 +332,7 @@ export class PermissionsService {
     }
   }
 
-  async openAppSettings(): Promise<void> {
+  async openAppSettings(): void {
     try {
       // This would typically open the app's settings page
       // For web/testing, we'll just log the action

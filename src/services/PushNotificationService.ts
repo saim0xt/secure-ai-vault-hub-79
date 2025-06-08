@@ -1,4 +1,5 @@
-import { LocalNotifications, LocalNotificationSchema } from '@capacitor/local-notifications';
+
+import { LocalNotifications, ScheduleOptions } from '@capacitor/local-notifications';
 import { Preferences } from '@capacitor/preferences';
 
 export interface NotificationSchedule {
@@ -82,7 +83,7 @@ export class PushNotificationService {
 
     try {
       // Schedule one tip per day at random times
-      const notifications: LocalNotificationSchema[] = tips.map((tip, index) => {
+      const notifications: ScheduleOptions[] = tips.map((tip, index) => {
         const scheduleDate = new Date();
         scheduleDate.setDate(scheduleDate.getDate() + index);
         scheduleDate.setHours(Math.floor(Math.random() * 12) + 9, Math.floor(Math.random() * 60), 0, 0);
@@ -105,7 +106,7 @@ export class PushNotificationService {
 
   async scheduleReminders(): Promise<void> {
     try {
-      const notifications: LocalNotificationSchema[] = [
+      const notifications: ScheduleOptions[] = [
         {
           title: "Don't forget your vault!",
           body: "Check your secure files and organize your vault",
@@ -147,7 +148,7 @@ export class PushNotificationService {
 
   async sendSecurityAlert(title: string, body: string): Promise<void> {
     try {
-      const notification: LocalNotificationSchema = {
+      const notification: ScheduleOptions = {
         title,
         body,
         id: Date.now(),

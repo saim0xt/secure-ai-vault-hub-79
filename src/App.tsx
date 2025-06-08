@@ -28,7 +28,6 @@ import VoiceRecorder from "./components/voice/VoiceRecorder";
 import RecycleBin from "./components/vault/RecycleBin";
 import RewardsCenter from "./components/rewards/RewardsCenter";
 import TestingSuite from "./components/testing/TestingSuite";
-import LANSyncManager from "./components/network/LANSyncManager";
 
 // Providers
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -181,7 +180,7 @@ const AppContent = () => {
         } />
         <Route path="/lan-sync" element={
           <ProtectedRoute>
-            <LANSyncManager />
+            {React.lazy(() => import('./components/network/LANSyncManager'))}
           </ProtectedRoute>
         } />
         

@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, Wifi, Smartphone, RefreshCw, Play, CheckCircle, AlertCircle, WifiOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { LANSyncService, DiscoveredDevice, SyncProgress, SyncHistoryEntry } from '../../services/LANSyncService';
+import { LANSyncService, DiscoveredDevice, SyncProgress } from '../../services/LANSyncService';
 
 const LANSyncManager = () => {
   const navigate = useNavigate();
@@ -330,7 +330,7 @@ const LANSyncManager = () => {
 };
 
 const SyncHistory = () => {
-  const [history, setHistory] = useState<SyncHistoryEntry[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
 
   useEffect(() => {
     loadSyncHistory();
