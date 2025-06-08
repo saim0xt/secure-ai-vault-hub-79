@@ -1,4 +1,4 @@
-import { BiometricAuth, BiometryType, BiometricAuthenticationStatus } from '@aparajita/capacitor-biometric-auth';
+import { BiometricAuth, BiometryType } from '@aparajita/capacitor-biometric-auth';
 import { Preferences } from '@capacitor/preferences';
 
 export interface BiometricCapabilities {
@@ -137,23 +137,26 @@ export class ProductionBiometricService {
         iosFallbackTitle: 'Use Passcode',
         androidTitle: 'Biometric Authentication',
         androidSubtitle: 'Authenticate to access your vault',
-        androidConfirmationRequired: config.requireConfirmation,
-        androidNegativeText: 'Cancel'
+        androidConfirmationRequired: config.requireConfirmation
       });
 
       return { success: true };
     } catch (error: any) {
       this.retryCount++;
       
-      // Handle specific biometric errors
-      switch (error.code) {
-        case BiometricAuthenticationStatus.userCancel:
+      // Handle specific biometric errors using error codes
+      const errorCode = error.code?.toString() || 'UNKNOWN_ERROR';
+      
+      switch (errorCode) {
+        case '10': // USER_CANCEL
+        case 'USER_CANCEL':
           return {
             success: false,
             error: 'Authentication cancelled by user',
             errorCode: 'USER_CANCEL'
           };
-        case BiometricAuthenticationStatus.userFallback:
+        case '11': // USER_FALLBACK
+        case 'USER_FALLBACK':
           if (config.fallbackToDeviceCredentials) {
             // Retry with device credentials
             return await this.authenticateWithDeviceCredentials(reason);
@@ -163,19 +166,22 @@ export class ProductionBiometricService {
             error: 'User chose fallback authentication',
             errorCode: 'USER_FALLBACK'
           };
-        case BiometricAuthenticationStatus.biometryNotAvailable:
+        case '1': // BIOMETRY_NOT_AVAILABLE
+        case 'BIOMETRY_NOT_AVAILABLE':
           return {
             success: false,
             error: 'Biometric authentication not available',
             errorCode: 'NOT_AVAILABLE'
           };
-        case BiometricAuthenticationStatus.biometryNotEnrolled:
+        case '2': // BIOMETRY_NOT_ENROLLED
+        case 'BIOMETRY_NOT_ENROLLED':
           return {
             success: false,
             error: 'No biometrics enrolled on device',
             errorCode: 'NOT_ENROLLED'
           };
-        case BiometricAuthenticationStatus.biometryLockout:
+        case '7': // BIOMETRY_LOCKOUT
+        case 'BIOMETRY_LOCKOUT':
           return {
             success: false,
             error: 'Biometric authentication locked out',
@@ -221,8 +227,7 @@ export class ProductionBiometricService {
         allowDeviceCredential: config.allowDeviceCredential,
         androidTitle: title,
         androidSubtitle: subtitle,
-        androidConfirmationRequired: config.requireConfirmation,
-        androidNegativeText: 'Cancel'
+        androidConfirmationRequired: config.requireConfirmation
       });
 
       const result: BiometricResult = { success: true };
