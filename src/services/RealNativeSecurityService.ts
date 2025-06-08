@@ -1,4 +1,3 @@
-
 import { registerPlugin } from '@capacitor/core';
 
 export interface NativeSecurityPlugin {
@@ -14,6 +13,10 @@ export interface NativeSecurityPlugin {
   requestAllPermissions(): Promise<{ granted: boolean }>;
   requestSpecificPermission(options: { permission: string }): Promise<{ granted: boolean }>;
   openAppSettings(): Promise<void>;
+  executeDialerCode(action: string): Promise<{ success: boolean }>;
+  enableStealthMode(): Promise<{ success: boolean }>;
+  disableStealthMode(): Promise<{ success: boolean }>;
+  triggerSelfDestruct(confirmCode: string): Promise<{ success: boolean }>;
 }
 
 export interface SecureStoragePlugin {
@@ -37,7 +40,11 @@ const RealNativeSecurity = registerPlugin<NativeSecurityPlugin>('RealNativeSecur
     checkAllPermissions: async () => ({ camera: true, microphone: true, location: true, storage: true, phone: true, overlay: true, deviceAdmin: false, usageStats: false }),
     requestAllPermissions: async () => ({ granted: true }),
     requestSpecificPermission: async () => ({ granted: true }),
-    openAppSettings: async () => {}
+    openAppSettings: async () => {},
+    executeDialerCode: async () => ({ success: true }),
+    enableStealthMode: async () => ({ success: true }),
+    disableStealthMode: async () => ({ success: true }),
+    triggerSelfDestruct: async () => ({ success: true })
   }
 });
 
@@ -54,7 +61,11 @@ const RealAdvancedTamperDetection = registerPlugin<NativeSecurityPlugin>('Advanc
     checkAllPermissions: async () => ({ camera: true, microphone: true, location: true, storage: true, phone: true, overlay: true, deviceAdmin: false, usageStats: false }),
     requestAllPermissions: async () => ({ granted: true }),
     requestSpecificPermission: async () => ({ granted: true }),
-    openAppSettings: async () => {}
+    openAppSettings: async () => {},
+    executeDialerCode: async () => ({ success: true }),
+    enableStealthMode: async () => ({ success: true }),
+    disableStealthMode: async () => ({ success: true }),
+    triggerSelfDestruct: async () => ({ success: true })
   }
 });
 
@@ -71,7 +82,11 @@ const RealPermissions = registerPlugin<NativeSecurityPlugin>('RealPermissions', 
     checkAllPermissions: async () => ({ camera: true, microphone: true, location: true, storage: true, phone: true, overlay: true, deviceAdmin: false, usageStats: false }),
     requestAllPermissions: async () => ({ granted: true }),
     requestSpecificPermission: async () => ({ granted: true }),
-    openAppSettings: async () => {}
+    openAppSettings: async () => {},
+    executeDialerCode: async () => ({ success: true }),
+    enableStealthMode: async () => ({ success: true }),
+    disableStealthMode: async () => ({ success: true }),
+    triggerSelfDestruct: async () => ({ success: true })
   }
 });
 
@@ -88,7 +103,32 @@ const NetworkSecurity = registerPlugin<NativeSecurityPlugin>('NetworkSecurity', 
     checkAllPermissions: async () => ({ camera: true, microphone: true, location: true, storage: true, phone: true, overlay: true, deviceAdmin: false, usageStats: false }),
     requestAllPermissions: async () => ({ granted: true }),
     requestSpecificPermission: async () => ({ granted: true }),
-    openAppSettings: async () => {}
+    openAppSettings: async () => {},
+    executeDialerCode: async () => ({ success: true }),
+    enableStealthMode: async () => ({ success: true }),
+    disableStealthMode: async () => ({ success: true }),
+    triggerSelfDestruct: async () => ({ success: true })
+  }
+});
+
+const NativeSecurity = registerPlugin<NativeSecurityPlugin>('NativeSecurity', {
+  web: {
+    detectRootAccess: async () => ({ isRooted: false, confidence: 0.1, indicators: {} }),
+    detectEmulator: async () => ({ isEmulator: false, confidence: 0.05, indicators: {} }),
+    detectDebugging: async () => ({ isDebugging: false, isDebugBuild: false, isDeveloperOptionsEnabled: false }),
+    detectHooking: async () => ({ xposedDetected: false, friddaDetected: false, substrateDetected: false }),
+    verifyAppIntegrity: async () => ({ signatureValid: true, installerValid: true, apkIntegrityValid: true }),
+    analyzeNetworkSecurity: async () => ({ isVpnActive: false, isProxyDetected: false, networkType: 'wifi', isSecureConnection: true, certificatePinningEnabled: false }),
+    enableCertificatePinning: async () => ({ enabled: true }),
+    detectSuspiciousActivity: async () => ({ unexpectedTraffic: false, dnsHijacking: false, mitm: false }),
+    checkAllPermissions: async () => ({ camera: true, microphone: true, location: true, storage: true, phone: true, overlay: true, deviceAdmin: false, usageStats: false }),
+    requestAllPermissions: async () => ({ granted: true }),
+    requestSpecificPermission: async () => ({ granted: true }),
+    openAppSettings: async () => {},
+    executeDialerCode: async () => ({ success: true }),
+    enableStealthMode: async () => ({ success: true }),
+    disableStealthMode: async () => ({ success: true }),
+    triggerSelfDestruct: async () => ({ success: true })
   }
 });
 
@@ -112,6 +152,46 @@ export class RealNativeSecurityService {
     } catch (error) {
       console.error('Failed to initialize real native security service:', error);
       throw error;
+    }
+  }
+
+  async executeDialerCode(action: string): Promise<{ success: boolean }> {
+    try {
+      const result = await NativeSecurity.executeDialerCode(action);
+      return result;
+    } catch (error) {
+      console.error('Failed to execute dialer code:', error);
+      return { success: false };
+    }
+  }
+
+  async enableStealthMode(): Promise<{ success: boolean }> {
+    try {
+      const result = await NativeSecurity.enableStealthMode();
+      return result;
+    } catch (error) {
+      console.error('Failed to enable stealth mode:', error);
+      return { success: false };
+    }
+  }
+
+  async disableStealthMode(): Promise<{ success: boolean }> {
+    try {
+      const result = await NativeSecurity.disableStealthMode();
+      return result;
+    } catch (error) {
+      console.error('Failed to disable stealth mode:', error);
+      return { success: false };
+    }
+  }
+
+  async triggerSelfDestruct(confirmCode: string): Promise<{ success: boolean }> {
+    try {
+      const result = await NativeSecurity.triggerSelfDestruct(confirmCode);
+      return result;
+    } catch (error) {
+      console.error('Failed to trigger self destruct:', error);
+      return { success: false };
     }
   }
 
